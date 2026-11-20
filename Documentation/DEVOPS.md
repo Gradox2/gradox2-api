@@ -578,6 +578,36 @@ Base URL: `http://<host>:8080` (sin HTTPS por ahora). Lista detallada en
 
 ---
 
+## 13.1 Deploy continuo (CI antes que deploy)
+
+El job `deploy` de `.github/workflows/ci.yml` dispara el **Deploy Hook** del
+servicio de Render únicamente cuando `build-and-test`, `migrations` y `openapi`
+terminan bien sobre `main`. Un pull request nunca despliega, y `migrations` está
+en el `needs` a propósito: Flyway corre al arrancar la app, así que una migración
+rota tumba el servicio recién desplegado.
+
+1. **Crear el hook**: Render → servicio → *Settings* → *Deploy Hook* → copiar la
+   URL completa (`https://api.render.com/deploy/srv-...?key=...`).
+2. **Guardarlo como secret**: GitHub → repo → *Settings* → *Secrets and variables*
+   → *Actions* → *New repository secret* → nombre **`RENDER_DEPLOY_HOOK_URL`** →
+   pegar la URL completa.
+3. **Desactivar Auto-Deploy en Render** (*Settings* → *Build & Deploy* →
+   Auto-Deploy: **No**). Si queda activo, Render despliega en cada push por su
+   cuenta y el gate de tests no bloquea nada.
+4. **Re-desplegar a mano**: *Actions* → *Java CI with Maven* → *Run workflow*
+   (trigger `workflow_dispatch`).
+
+> ⚠️ **El hook es una credencial**, no una URL informativa: quien la tenga puede
+> disparar despliegues del servicio. Vive solo en el secret, nunca en el repo, un
+> `.env` versionado, un log o un issue. Si se filtra, se regenera en Render y se
+> actualiza el secret.
+
+Si el secret falta o el hook responde un error, el job falla con `::error::` en
+vez de quedarse en verde sin desplegar. El cuerpo de la respuesta de Render se
+imprime en el log para poder rastrear el deploy disparado.
+
+---
+
 ## 14. Pendientes del equipo DevOps (hoja de ruta)
 
 1. **TLS/HTTPS** (Caddy/nginx + ajustar `APP_BASE_URL` a `https://...`). Al
@@ -590,9 +620,12 @@ Base URL: `http://<host>:8080` (sin HTTPS por ahora). Lista detallada en
 5. Verificar en producción que `APP_CORS_ALLOWED_ORIGINS` coincide con el
    dominio publicado (agregarlo si se configura un dominio propio distinto de
    `gradox2.github.io`).
-6. CI/CD: GitHub Actions corre la suite y (job `migrations`) aplica Flyway
-   sobre `postgres:16` validando el mapeo JPA. Lo que falta es el tramo de
-   entrega: build de imagen + push a registry + deploy.
+6. CI/CD: GitHub Actions corre la suite, valida las migraciones contra
+   `postgres:16` y publica el contrato OpenAPI. El tramo de entrega ya está
+   conectado: el job `deploy` dispara el Deploy Hook de Render **solo si los tres
+   jobs anteriores pasan** sobre `main` (ver §13.1). Queda pendiente publicar la
+   imagen en un registry propio; hoy el hook dispara el build/deploy configurado
+   en el servicio de Render.
 7. Moderación de contenido: no existen todavía endpoints `/moderation/*` (denuncias).
    El registro de auditoría (`GET /admin/audit`) y el listado de propuestas
    (`GET /admin/proposals`) ya están disponibles para soportar esa tarea.

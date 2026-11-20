@@ -5,6 +5,8 @@ on:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
+  # Permite re-desplegar a mano desde la pestaña Actions (sin empujar un commit).
+  workflow_dispatch:
 
 jobs:
   build-and-test:
@@ -114,3 +116,32 @@ jobs:
       with:
         name: openapi
         path: gradox2/target/openapi.json
+
+  # Despliegue a Render mediante un Deploy Hook.
+  #
+  # El hook es una CREDENCIAL: quien tenga la URL puede disparar despliegues de
+  # este servicio, asi que vive en el secret RENDER_DEPLOY_HOOK_URL y nunca en el
+  # repositorio. Para que el gate tenga sentido hay que desactivar el Auto-Deploy
+  # del servicio en Render (Settings -> Build & Deploy -> Auto-Deploy: No); si no,
+  # Render despliega en cada push por su cuenta y estos tests no bloquean nada.
+  #
+  # `needs` incluye `migrations` a proposito: Flyway corre al arrancar la app, asi
+  # que una migracion rota tumba el servicio recien desplegado.
+  deploy:
+    runs-on: ubuntu-latest
+    needs: [ build-and-test, migrations, openapi ]
+    if: >-
+      github.event_name != 'pull_request'
+      && github.ref == 'refs/heads/main'
+
+    steps:
+    - name: Disparar el deploy en Render
+      env:
+        RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+      run: |
+        if [ -z "${RENDER_DEPLOY_HOOK_URL}" ]; then
+          echo "::error::Falta el secret RENDER_DEPLOY_HOOK_URL (Settings -> Secrets and variables -> Actions)."
+          exit 1
+        fi
+        curl --fail-with-body --silent --show-error --max-time 30 \
+          -X POST "${RENDER_DEPLOY_HOOK_URL}"
