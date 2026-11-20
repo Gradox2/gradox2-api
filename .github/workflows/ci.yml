@@ -143,5 +143,18 @@ jobs:
           echo "::error::Falta el secret RENDER_DEPLOY_HOOK_URL (Settings -> Secrets and variables -> Actions)."
           exit 1
         fi
-        curl --fail-with-body --silent --show-error --max-time 30 \
-          -X POST "${RENDER_DEPLOY_HOOK_URL}"
+        # El codigo HTTP se evalua explicitamente: sin esto una redireccion 3xx
+        # dejaria el job en verde sin haber desplegado nada.
+        response_file="$(mktemp)"
+        http_status="$(curl --silent --show-error --max-time 30 \
+          --output "${response_file}" --write-out '%{http_code}' \
+          -X POST "${RENDER_DEPLOY_HOOK_URL}")" || {
+            echo "::error::No se pudo contactar el Deploy Hook de Render (fallo de red o timeout)."
+            exit 1
+          }
+        echo "Render respondio HTTP ${http_status}"
+        cat "${response_file}" || true
+        if [ "${http_status}" -lt 200 ] || [ "${http_status}" -ge 300 ]; then
+          echo "::error::Render no acepto el deploy (HTTP ${http_status})."
+          exit 1
+        fi

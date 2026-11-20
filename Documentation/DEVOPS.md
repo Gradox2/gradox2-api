@@ -602,9 +602,11 @@ rota tumba el servicio recién desplegado.
 > `.env` versionado, un log o un issue. Si se filtra, se regenera en Render y se
 > actualiza el secret.
 
-Si el secret falta o el hook responde un error, el job falla con `::error::` en
-vez de quedarse en verde sin desplegar. El cuerpo de la respuesta de Render se
-imprime en el log para poder rastrear el deploy disparado.
+Si el secret falta, el hook responde un código distinto de 2xx o la conexión
+falla, el job falla con `::error::` en vez de quedarse en verde sin desplegar
+(una redirección 3xx no cuenta como deploy aceptado). El código HTTP y el cuerpo
+de la respuesta de Render se imprimen en el log para poder rastrear el deploy
+disparado.
 
 ---
 
