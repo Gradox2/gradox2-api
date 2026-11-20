@@ -153,7 +153,13 @@ jobs:
             exit 1
           }
         echo "Render respondio HTTP ${http_status}"
-        cat "${response_file}" || true
+        # El cuerpo trae el id del deploy: es diagnostico, no el gate. Si no se
+        # puede leer se avisa explicitamente en vez de taparlo con "|| true".
+        if [ -f "${response_file}" ]; then
+          cat "${response_file}"
+        else
+          echo "::warning::No se pudo leer el cuerpo de la respuesta del Deploy Hook."
+        fi
         # Un estado vacio o no numerico haria fallar el test numerico sin abortar
         # el job (bash -e no sale dentro de la condicion de un if).
         case "${http_status}" in
