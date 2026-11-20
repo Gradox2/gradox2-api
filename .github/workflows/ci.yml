@@ -154,6 +154,15 @@ jobs:
           }
         echo "Render respondio HTTP ${http_status}"
         cat "${response_file}" || true
+        # Un estado vacio o no numerico haria fallar el test numerico sin abortar
+        # el job (bash -e no sale dentro de la condicion de un if).
+        case "${http_status}" in
+          [0-9][0-9][0-9]) ;;
+          *)
+            echo "::error::El Deploy Hook devolvio un estado HTTP invalido ('${http_status}')."
+            exit 1
+            ;;
+        esac
         if [ "${http_status}" -lt 200 ] || [ "${http_status}" -ge 300 ]; then
           echo "::error::Render no acepto el deploy (HTTP ${http_status})."
           exit 1
