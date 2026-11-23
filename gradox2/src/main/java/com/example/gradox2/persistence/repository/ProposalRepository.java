@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
@@ -15,7 +16,10 @@ import com.example.gradox2.persistence.entities.enums.ProposalStatus;
 
 public interface ProposalRepository extends JpaRepository<Proposal, Long> {
 
-    List<Proposal> findByStatusAndEndsAtBefore(ProposalStatus status, Instant now);
+    /**
+     * WAVE2 S5: versión paginada. La lista completa de vencidas se traía entera en cada tick.
+     */
+    List<Proposal> findByStatusAndEndsAtBefore(ProposalStatus status, Instant now, Pageable pageable);
     
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT p FROM Proposal p WHERE p.id = :id")

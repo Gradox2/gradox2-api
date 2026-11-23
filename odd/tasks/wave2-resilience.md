@@ -59,3 +59,20 @@ Contexto de despliegue: backend en **Render** (una instancia, TLS del proveedor)
 - **E2** — Evidencia T1: `ActuatorMetricsSecurityIntegrationTest` 5/5. T2: `EmailServiceAsyncTest` 4/4 +
   `MailFailureToleranceIntegrationTest` 1/1. T3: `CatalogueCacheTest` 4/4 y las integraciones de
   catálogo (16 tests) sin regresiones.
+- **E3** — T4 exigió además `@Transactional(readOnly = true)` en `FileServiceImpl.getAllFiles()`: sin
+  transacción, el mapeo leía `scores` fuera de sesión y solo funcionaba por OSIV, con una consulta por
+  archivo. El test de conteo (`QueryCountRegressionTest`) lo detectó con `LazyInitializationException`
+  antes de que se pudiera cerrar la tarea.
+- **E4** — Evidencia T4: `QueryCountRegressionTest` 2/2 (listado ≤4 sentencias para 5 archivos; conteo de
+  votos ≤2 para 6 votos). T5: `SchedulerExpirationTest` 2/2 (3 cierres, segunda pasada 0 y sin auditoría
+  duplicada; 120 vencidas en un tick con páginas de 100).
+
+## Cierre
+
+| Tarea | Commit |
+| --- | --- |
+| T1 | `c978a99` feat(ops): expose actuator metrics to admin only |
+| T2 | `7a9ed96` fix(mail): bound smtp and s3 timeouts and keep signup alive |
+| T3 | `8d190ac` perf(cache): bound catalogue cache with caffeine ttl |
+| T4 | `f1752d5` perf(votes): remove n+1 queries from tally and file mapping |
+| T5 | este commit (scheduler paginado e idempotente) |
