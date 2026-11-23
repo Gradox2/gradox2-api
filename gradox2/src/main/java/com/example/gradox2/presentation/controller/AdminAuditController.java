@@ -34,10 +34,10 @@ public class AdminAuditController {
 
     @GetMapping
     @PreAuthorize("hasRole('ADMIN')")
-    @Operation(summary = "Ver registro de auditoría", description = "Lista acciones registradas filtrables por actor, tipo, fechas y paginación (solo MASTER)")
+    @Operation(summary = "Ver registro de auditoría", description = "Lista acciones registradas filtrables por actor, tipo, fechas y paginación (solo ADMIN)")
     @ApiResponses({
         @ApiResponse(responseCode = "200", description = "Registro de auditoría"),
-        @ApiResponse(responseCode = "403", description = "No autorizado (se requiere MASTER)", content = @Content)
+        @ApiResponse(responseCode = "403", description = "No autorizado (se requiere ADMIN)", content = @Content)
     })
     public ResponseEntity<Page<AuditLogResponse>> getAuditLog(
             @RequestParam(required = false) Long actorId,

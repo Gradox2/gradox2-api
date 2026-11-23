@@ -12,7 +12,7 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 @Data
 @Builder
-@Schema(description = "Propuesta visible por MASTER (todos los tipos, solo lectura)")
+@Schema(description = "Propuesta visible por ADMIN (todos los tipos, solo lectura)")
 public class AdminProposalResponse {
     @Schema(description = "ID de la propuesta", example = "1")
     private Long id;

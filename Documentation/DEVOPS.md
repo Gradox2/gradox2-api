@@ -172,9 +172,9 @@ Los entornos se seleccionan con `SPRING_PROFILES_ACTIVE`.
 | `RATE_LIMIT_MAX_BUCKETS` | Claves de rate limit simultáneas | no | `10000` |
 | `RATE_LIMIT_BUCKET_TTL_MS` | Vida de un bucket sin actividad (ms) | no | `1800000` |
 | `APP_BASE_URL` | URL pública para enlaces de email | **sí (pendiente)** | ver §6 |
-| `BOOTSTRAP_MASTER_USERNAME` | Primer MASTER (solo primer arranque) | **sí (pendiente)** | ver §6 |
-| `BOOTSTRAP_MASTER_PASSWORD` | Password del primer MASTER | **sí (pendiente)** | ver §6 |
-| `BOOTSTRAP_MASTER_EMAIL` | Email del primer MASTER | **sí (pendiente)** | ver §6 |
+| `BOOTSTRAP_MASTER_USERNAME` | Primer MASTER (master del grado por defecto, solo primer arranque) | **sí (pendiente)** | ver §5 |
+| `BOOTSTRAP_MASTER_PASSWORD` | Password del primer MASTER | **sí (pendiente)** | ver §5 |
+| `BOOTSTRAP_MASTER_EMAIL` | Email del primer MASTER | **sí (pendiente)** | ver §5 |
 
 > Las antiguas variables `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB`
 > **ya no son necesarias**: la BD es gestionada (Supabase). Solo quedan en el
@@ -184,7 +184,12 @@ Los entornos se seleccionan con `SPRING_PROFILES_ACTIVE`.
 > `BOOTSTRAP_MASTER_USERNAME`, `BOOTSTRAP_MASTER_PASSWORD`,
 > `BOOTSTRAP_MASTER_EMAIL`. Si el bootstrap queda vacío, **no se creará ningún
 > usuario MASTER** y, como el registro solo crea cuentas `USER` y el ascenso a
-> MASTER requiere votación de otros MASTERs, **la plataforma quedaría sin administradores**.
+> MASTER requiere votación de otros MASTERs, **la plataforma quedaría sin masters y
+> sin gobernanza**.
+>
+> `BOOTSTRAP_MASTER_*` crea un **`MASTER` del grado por defecto**, no el
+> administrador de plataforma: los roles están separados (`GRADOS.md` §6.1). El
+> panel `/admin/**` exige `ADMIN` y ese rol **no se crea por env** (ver «Paso 3 bis» en §5).
 
 ---
 
@@ -257,7 +262,8 @@ cp Docker/.env.example Docker/.env
 #   - SPRING_MAIL_*  (credenciales de la cuenta Gmail)
 #   - JWT_SECRET  (>= 32 bytes)
 #   - APP_BASE_URL  → http://<IP-o-dominio>:8080   (sin HTTPS por ahora)
-#   - BOOTSTRAP_MASTER_*  → credenciales del primer administrador
+#   - BOOTSTRAP_MASTER_*  → credenciales del primer master del grado por defecto
+#     (el primer ADMIN de plataforma se nombra por SQL: §5 «Paso 3 bis»)
 #   - SPRING_PROFILES_ACTIVE=prod
 ```
 
@@ -275,7 +281,25 @@ En el **primer arranque**:
    las entidades JPA; si hay mismatch, **falla el arranque** a propósito).
 3. `MasterBootstrap` crea el primer usuario **MASTER** a partir de
    `BOOTSTRAP_MASTER_*` (solo si no existe ya; es idempotente y nunca loguea la
-   contraseña).
+   contraseña). Ese usuario es master del grado por defecto, no de la plataforma.
+
+### Paso 3 bis — Nombrar el primer `ADMIN` (obligatorio, una sola vez)
+
+Los cuatro roles son excluyentes (`GUEST`, `USER`, `MASTER`, `ADMIN`) y
+`/admin/**` exige `ADMIN`: ni el bootstrap ni ninguna votación lo crean. Sin este
+paso **nadie puede banear, auditar, administrar propuestas ni corregir grados**
+(el resto de la API funciona igual). Se hace por SQL contra Supabase, en el
+SQL Editor del dashboard:
+
+```sql
+-- Administrador de plataforma (acceso a /admin/**, no vota, no se promociona)
+UPDATE users SET role = 'ADMIN' WHERE username = '<usuario-admin>';
+```
+
+Verificación: login con ese usuario y `curl -s -H "Authorization: Bearer <token>" \
+https://<host>/admin/audit` debe responder `200` (con un `MASTER` responde `403`).
+El identificador del rol vive en la columna `users.role`; el enum completo está en
+`UserRole`. Detalle de la separación de roles: `GRADOS.md` §6.1 y §6.4.
 
 ### Paso 4 — Verificar el despliegue
 ```bash
@@ -507,9 +531,9 @@ Base URL: `http://<host>:8080` (sin HTTPS por ahora). Lista detallada en
 | GET | `/courses[/{id}]` | público | catálogo de cursos con sus asignaturas (con caché) |
 | GET | `/stats` | público | estadísticas (archivos, espacio, descargas…) |
 | PUT/DELETE | `/users/me/profile-picture` | autenticado | foto de perfil (WebP + recorte, limpia el objeto S3 anterior) |
-| PUT | `/admin/users/{id}/ban` · `/unban` | MASTER | moderación de usuarios |
-| GET | `/admin/audit` | MASTER | registro de auditoría (actor, tipo, rango de fechas, paginación) |
-| GET | `/admin/proposals` | MASTER | todas las propuestas (subida, borrado, expulsión, config) |
+| PUT | `/admin/users/{id}/ban` · `/unban` | ADMIN | moderación de usuarios |
+| GET | `/admin/audit` | ADMIN | registro de auditoría (actor, tipo, rango de fechas, paginación) |
+| GET | `/admin/proposals` | ADMIN | todas las propuestas (subida, borrado, expulsión, config) |
 | GET | `/health` · `/actuator/health/**` · `/actuator/info` | público | healthcheck / info |
 | — | `/swagger-ui/**`, `/v3/api-docs/**` | **desactivado en prod** | solo disponible en local/dev |
 

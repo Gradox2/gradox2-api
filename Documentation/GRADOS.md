@@ -568,12 +568,14 @@ Un grado con cero masters está muerto: no puede aprobar promociones ni config. 
 §12: es lo único de esta lista que no estaba cerrado):
 
 1. La migración siembra los tres grados con su catálogo, **sin** masters.
-2. `BOOTSTRAP_MASTER_*` pasa a crear un **`ADMIN` de plataforma**. Sin esto, tras el despliegue nadie podría
-   administrar nada: `/admin/**` deja de aceptar `MASTER`.
-3. El primer `MASTER` de cada grado se nombra **por acceso directo a base de datos** (decisión del equipo:
-   no hay endpoint para esto). A partir de ahí la gobernanza es endógena: el resto de masters salen de
-   votaciones del propio grado.
-4. Promoción operativa, documentada acá para no improvisarla en producción:
+2. `BOOTSTRAP_MASTER_*` crea un **`MASTER` del grado por defecto** (`MasterBootstrap`, idempotente). Ese
+   usuario gobierna solo su grado: es el arranque de la gobernanza, no del panel de plataforma. Los demás
+   masters de ese grado salen de votaciones del propio grado.
+3. El primer **`ADMIN` de plataforma** (acceso a `/admin/**`) **no** se crea por env: se nombra por acceso
+   directo a base de datos. `/admin/**` exige `hasRole('ADMIN')` y no acepta `MASTER` (§6.1), así que sin
+   este paso nadie puede banear, auditar ni corregir grados. Los siguientes masters de cada grado se
+   nombran igual: por SQL, no hay endpoint para esto. A partir de ahí la gobernanza es endógena.
+4. Nombramiento operativo, documentado acá para no improvisarlo en producción:
 
    ```sql
    -- dar acceso al panel de administración a un usuario existente
@@ -864,8 +866,8 @@ P5 y P6 no bloquean nada. A1 sí bloquea la tarea de bootstrap (T14), no el rest
 
 ## 14. As-built: qué se implementó y qué cambió respecto del plan
 
-Verificado con la suite completa en el perfil `test` (**178 tests**) y con `PostgresMigrationIT` contra
-PostgreSQL 16 real, que aplica V1→V13 sobre una base con datos previos y valida el mapeo JPA
+Verificado con la suite completa en el perfil `test` (**213 tests**) y con `PostgresMigrationIT` contra
+PostgreSQL 16 real, que aplica V1→V16 sobre una base con datos previos y valida el mapeo JPA
 (`ddl-auto=validate`).
 
 | # | Diferencia con la especificación | Por qué |
