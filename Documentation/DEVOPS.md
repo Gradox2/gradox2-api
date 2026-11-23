@@ -646,12 +646,9 @@ disparado.
 5. Verificar en producción que `APP_CORS_ALLOWED_ORIGINS` coincide con el
    dominio publicado (agregarlo si se configura un dominio propio distinto de
    `gradox2.github.io`).
-6. CI/CD: GitHub Actions corre la suite, valida las migraciones contra
-   `postgres:16` y publica el contrato OpenAPI. El tramo de entrega ya está
-   conectado: el job `deploy` dispara el Deploy Hook de Render **solo si los tres
-   jobs anteriores pasan** sobre `main` (ver §13.1). Queda pendiente publicar la
-   imagen en un registry propio; hoy el hook dispara el build/deploy configurado
-   en el servicio de Render.
+6. CI/CD: GitHub Actions corre la suite y (job `migrations`) aplica Flyway
+   sobre `postgres:16` validando el mapeo JPA. Lo que falta es el tramo de
+   entrega: build de imagen + push a registry + deploy.
 7. Moderación de contenido: no existen todavía endpoints `/moderation/*` (denuncias).
    El registro de auditoría (`GET /admin/audit`) y el listado de propuestas
    (`GET /admin/proposals`) ya están disponibles para soportar esa tarea.
