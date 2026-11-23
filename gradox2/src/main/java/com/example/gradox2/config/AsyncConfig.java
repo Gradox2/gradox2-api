@@ -51,7 +51,10 @@ public class AsyncConfig implements AsyncConfigurer {
         executor.setThreadNamePrefix("email-async-");
         executor.setWaitForTasksToCompleteOnShutdown(true);
         executor.setAwaitTerminationSeconds(10);
-        executor.setRejectedExecutionHandler(new java.util.concurrent.ThreadPoolExecutor.CallerRunsPolicy());
+        // WAVE2 S2: con CallerRunsPolicy, bajo carga el envío de correo se ejecutaba en el hilo del
+        // request y el SMTP lento frenaba la API. Con AbortPolicy la tarea se rechaza, EmailService la
+        // descarta y la registra: el alta de usuario nunca espera al correo.
+        executor.setRejectedExecutionHandler(new java.util.concurrent.ThreadPoolExecutor.AbortPolicy());
         executor.initialize();
         return executor;
     }

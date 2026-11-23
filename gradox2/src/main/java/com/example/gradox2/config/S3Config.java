@@ -13,6 +13,7 @@ import com.example.gradox2.service.interfaces.FileUrlSigner;
 
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.S3Configuration;
@@ -41,6 +42,13 @@ public class S3Config {
     @Value("${s3.presign.ttl-seconds}")
     private long presignTtlSeconds;
 
+    /** WAVE2 S2: sin esto, un R2/MinIO que no responde deja el request esperando al SDK. */
+    @Value("${s3.timeouts.api-call-ms:10000}")
+    private long apiCallTimeoutMs;
+
+    @Value("${s3.timeouts.api-call-attempt-ms:5000}")
+    private long apiCallAttemptTimeoutMs;
+
     @Bean
     @Profile("!test")
     public S3Client s3Client() {
@@ -49,6 +57,10 @@ public class S3Config {
                 .region(Region.of(region))
                 .credentialsProvider(StaticCredentialsProvider.create(
                         AwsBasicCredentials.create(accessKey, secretKey)))
+                .overrideConfiguration(ClientOverrideConfiguration.builder()
+                        .apiCallTimeout(Duration.ofMillis(apiCallTimeoutMs))
+                        .apiCallAttemptTimeout(Duration.ofMillis(apiCallAttemptTimeoutMs))
+                        .build())
                 .serviceConfiguration(S3Configuration.builder()
                         .pathStyleAccessEnabled(true)
                         .build())

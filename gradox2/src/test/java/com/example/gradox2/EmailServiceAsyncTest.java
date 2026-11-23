@@ -7,6 +7,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
@@ -50,8 +52,9 @@ class EmailServiceAsyncTest {
         }
 
         @Bean
-        EmailService emailService(JavaMailSender mailSender) {
-            return new EmailService(mailSender);
+        EmailService emailService(JavaMailSender mailSender,
+                @org.springframework.beans.factory.annotation.Qualifier("taskExecutor") Executor taskExecutor) {
+            return new EmailService(mailSender, taskExecutor);
         }
     }
 
@@ -76,15 +79,41 @@ class EmailServiceAsyncTest {
 
         assertTrue(sent.await(3, TimeUnit.SECONDS), "el envío debió ejecutarse en background");
         assertNotEquals(caller, senderThread.get(),
-                "el envío debe correr en un hilo distinto al llamador (@Async)");
+                "el envío debe correr en un hilo distinto al llamador (executor de correo)");
     }
 
     @Test
-    void sendEmailFailureDoesNotPropagateToCaller() throws Exception {
+    void sendEmailFailureDoesNotPropagateToCaller() {
         doThrow(new IllegalStateException("SMTP caído simulada"))
                 .when(mailSender).send(any(SimpleMailMessage.class));
 
-        // @Async (void) + try/catch: el fallo nunca debe escapar al llamador.
+        // WAVE2 S2: el fallo del SMTP nunca debe escapar al llamador (registro, reset).
         assertDoesNotThrow(() -> emailService.sendEmail("to@example.com", "Subject", "Body"));
+    }
+
+    @Test
+    void sendEmailRetriesOnceBeforeGivingUp() {
+        JavaMailSender flaky = mock(JavaMailSender.class);
+        doThrow(new IllegalStateException("primer intento falla"))
+                .doNothing()
+                .when(flaky).send(any(SimpleMailMessage.class));
+
+        // Executor síncrono: el reintento ocurre en el mismo hilo y el test es determinista.
+        new EmailService(flaky, Runnable::run).sendEmail("to@example.com", "Subject", "Body");
+
+        verify(flaky, times(2)).send(any(SimpleMailMessage.class));
+    }
+
+    @Test
+    void rejectedTaskDoesNotPropagateToCaller() {
+        JavaMailSender mailSenderMock = mock(JavaMailSender.class);
+        Executor fullPool = task -> {
+            throw new java.util.concurrent.RejectedExecutionException("pool lleno");
+        };
+
+        // WAVE2 S2: con AbortPolicy el pool rechaza; el alta de usuario no puede fallar por eso.
+        assertDoesNotThrow(() -> new EmailService(mailSenderMock, fullPool)
+                .sendEmail("to@example.com", "Subject", "Body"));
+        verify(mailSenderMock, times(0)).send(any(SimpleMailMessage.class));
     }
 }
