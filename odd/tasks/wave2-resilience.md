@@ -76,3 +76,11 @@ Contexto de despliegue: backend en **Render** (una instancia, TLS del proveedor)
 | T3 | `8d190ac` perf(cache): bound catalogue cache with caffeine ttl |
 | T4 | `f1752d5` perf(votes): remove n+1 queries from tally and file mapping |
 | T5 | este commit (scheduler paginado e idempotente) |
+- **E5** — Verificación independiente (`gentle-ai-verify`, read-only): **S1–S5 PASS**, sin hallazgos
+  bloqueantes. Sugirió dos regresiones que se agregaron en el mismo commit de T5: alta de usuario con el
+  pool de correo rechazando la tarea (antes solo cubierto a nivel `EmailService`) y descuento de
+  reputación sin duplicar en un tick repetido (antes solo se auditaba el conteo).
+- **E6** — `PostgresMigrationIT` **no aplica** en esta ola: no hay migraciones nuevas (V15 y V16 son de la
+  Ola 1) y el contenedor de PostgreSQL de pruebas no está levantado en este entorno (puerto 55432 cerrado).
+  Se reporta como no ejecutado, no como verde.
+| T5+ | `test(wave2): cover mail rejection and reputation idempotency` (regresiones pedidas por el verifier) |

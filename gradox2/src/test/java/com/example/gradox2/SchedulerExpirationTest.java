@@ -13,8 +13,12 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
 
 import com.example.gradox2.persistence.entities.ConfigProposal;
+import com.example.gradox2.persistence.entities.Course;
 import com.example.gradox2.persistence.entities.Degree;
+import com.example.gradox2.persistence.entities.FileProposal;
 import com.example.gradox2.persistence.entities.Proposal;
+import com.example.gradox2.persistence.entities.Subject;
+import com.example.gradox2.persistence.entities.TempFile;
 import com.example.gradox2.persistence.entities.User;
 import com.example.gradox2.persistence.entities.enums.ActionType;
 import com.example.gradox2.persistence.entities.enums.ProposalStatus;
@@ -44,6 +48,12 @@ class SchedulerExpirationTest {
 
     @Autowired
     private ProposalRepository proposalRepository;
+
+    @Autowired
+    private com.example.gradox2.persistence.repository.CourseRepository courseRepository;
+
+    @Autowired
+    private com.example.gradox2.persistence.repository.SubjectRepository subjectRepository;
 
     @Autowired
     private AuditRecordRepository auditRecordRepository;
@@ -127,6 +137,71 @@ class SchedulerExpirationTest {
                 .filteredOn(proposal -> proposal.getStatus() == ProposalStatus.PENDING)
                 .as("ninguna propuesta vencida queda pendiente tras el tick")
                 .isEmpty();
+    }
+
+    @Test
+    void repeatedTickDoesNotDeductReputationTwice() {
+        User uploader = userRepository.save(User.builder()
+                .username("expirationuploader")
+                .email("expirationuploader@rai.usc.es")
+                .passwordHash(passwordEncoder.encode(PASSWORD))
+                .role(UserRole.USER)
+                .degree(TestDegrees.informatica(degreeRepository))
+                .reputation(20.0)
+                .enabled(true)
+                .build());
+        FileProposal proposal = expiredFileProposal(ProposalStatus.PENDING, uploader);
+        long auditsBefore = auditRecordRepository.count();
+
+        assertThat(voteService.closeExpiredProposals()).isEqualTo(1);
+
+        assertThat(userRepository.findById(uploader.getId()).orElseThrow().getReputation())
+                .as("una subida rechazada descuenta 5 de reputación")
+                .isEqualTo(15.0);
+        assertThat(auditRecordRepository.count() - auditsBefore).isEqualTo(1);
+
+        assertThat(voteService.closeExpiredProposals())
+                .as("la propuesta ya está cerrada")
+                .isZero();
+
+        assertThat(userRepository.findById(uploader.getId()).orElseThrow().getReputation())
+                .as("un tick repetido no vuelve a descontar reputación")
+                .isEqualTo(15.0);
+        assertThat(auditRecordRepository.count() - auditsBefore)
+                .as("un tick repetido no vuelve a auditar")
+                .isEqualTo(1);
+        assertThat(proposalRepository.findById(proposal.getId()).orElseThrow().getStatus())
+                .isEqualTo(ProposalStatus.REJECTED);
+    }
+
+    private FileProposal expiredFileProposal(ProposalStatus status, User uploader) {
+        Subject subject = subjectRepository.save(Subject.builder()
+                .code("BD1")
+                .name("Bases de Datos I")
+                .course(courseRepository.save(Course.builder()
+                        .code("1")
+                        .name("Primer curso")
+                        .degree(TestDegrees.informatica(degreeRepository))
+                        .build()))
+                .build());
+
+        FileProposal proposal = new FileProposal();
+        proposal.setProposer(uploader);
+        proposal.setActionType(ActionType.UPLOAD);
+        proposal.setQuorumRequired(3);
+        proposal.setApprovalThreshold(0.5);
+        proposal.setStatus(status);
+        proposal.setEndsAt(Instant.now().minusSeconds(60));
+        proposal.setTempFile(TempFile.builder()
+                .title("Apuntes")
+                .type(com.example.gradox2.persistence.entities.enums.FileType.APUNTES)
+                .objectKey("files/temp.pdf")
+                .sizeBytes(10L)
+                .uploader(uploader)
+                .subject(subject)
+                .visibilityLevel(com.example.gradox2.persistence.entities.enums.FileVisibility.PUBLIC)
+                .build());
+        return proposalRepository.save(proposal);
     }
 
     private Proposal expiredProposal(ProposalStatus status) {
