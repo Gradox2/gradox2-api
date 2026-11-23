@@ -24,11 +24,11 @@ public interface FileRepository extends JpaRepository<File, Long> {
      * el fetch serían tres consultas por archivo.
      */
     @Query("select f from File f join fetch f.subject s join fetch s.course c join fetch c.degree "
-            + "order by f.id desc")
+            + "join fetch f.uploader order by f.id desc")
     List<File> findAllWithDetails(Pageable pageable);
 
     @Query("select f from File f join fetch f.subject s join fetch s.course c join fetch c.degree "
-            + "where f.id = :id")
+            + "join fetch f.uploader left join fetch f.scores where f.id = :id")
     java.util.Optional<File> findByIdWithDetails(@Param("id") Long id);
 
     //Stats
