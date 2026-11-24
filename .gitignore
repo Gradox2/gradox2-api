@@ -1,6 +1,9 @@
 Docker/.env
 # The frontend now lives in its own repository; ignore old local build/dependency leftovers.
 /frontend/
+# Local-only: notas de trabajo y material fuente de las asignaturas. Nunca se commitean.
+/TODO.md
+/content/
 .vscode
 .vscode/**
 .VSCodeCounter

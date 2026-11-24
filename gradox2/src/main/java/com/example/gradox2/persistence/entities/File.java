@@ -10,6 +10,7 @@ import com.example.gradox2.persistence.entities.enums.FileVisibility;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.BatchSize;
 
 @Getter
 @Setter
@@ -63,6 +64,7 @@ public class File {
     private Double score;
 
     @OneToMany(mappedBy = "file", cascade = CascadeType.ALL, orphanRemoval = true)
+    @BatchSize(size = 50)
     @Builder.Default
     private List<Score> scores = new ArrayList<>();
 

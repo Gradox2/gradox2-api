@@ -16,11 +16,11 @@ Notas:
 - El acceso a **S3 se simula con un fake en memoria** (`TestS3Config`): no se toca
   red ni se necesita MinIO/R2 para pasar los tests. Incluye un **signer fake**
   (`FileUrlSigner`) que devuelve URLs firmadas sin tocar red.
-- Ejecución más reciente: **213 tests, 0 fallos, 0 errores** (`./mvnw test`).
+- Ejecución más reciente: **236 tests, 0 fallos, 0 errores** (`./mvnw test`).
 - Las migraciones Flyway no pueden correr sobre H2: se validan con
   `PostgresMigrationIT` contra PostgreSQL real (job `migrations` de CI).
 
-## Suite actual (20 clases)
+## Suite actual (35 clases)
 
 ### 1) Gradox2ApplicationTests — 1 caso
 Archivo: [gradox2/src/test/java/com/example/gradox2/Gradox2ApplicationTests.java](../gradox2/src/test/java/com/example/gradox2/Gradox2ApplicationTests.java)

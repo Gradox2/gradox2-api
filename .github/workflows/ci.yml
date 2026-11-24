@@ -5,6 +5,8 @@ on:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
+  # Permite re-desplegar a mano desde la pestaña Actions (sin empujar un commit).
+  workflow_dispatch:
 
 jobs:
   build-and-test:
@@ -114,3 +116,60 @@ jobs:
       with:
         name: openapi
         path: gradox2/target/openapi.json
+
+  # Despliegue a Render mediante un Deploy Hook.
+  #
+  # El hook es una CREDENCIAL: quien tenga la URL puede disparar despliegues de
+  # este servicio, asi que vive en el secret RENDER_DEPLOY_HOOK_URL y nunca en el
+  # repositorio. Para que el gate tenga sentido hay que desactivar el Auto-Deploy
+  # del servicio en Render (Settings -> Build & Deploy -> Auto-Deploy: No); si no,
+  # Render despliega en cada push por su cuenta y estos tests no bloquean nada.
+  #
+  # `needs` incluye `migrations` a proposito: Flyway corre al arrancar la app, asi
+  # que una migracion rota tumba el servicio recien desplegado.
+  deploy:
+    runs-on: ubuntu-latest
+    needs: [ build-and-test, migrations, openapi ]
+    if: >-
+      github.event_name != 'pull_request'
+      && github.ref == 'refs/heads/main'
+
+    steps:
+    - name: Disparar el deploy en Render
+      env:
+        RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+      run: |
+        if [ -z "${RENDER_DEPLOY_HOOK_URL}" ]; then
+          echo "::error::Falta el secret RENDER_DEPLOY_HOOK_URL (Settings -> Secrets and variables -> Actions)."
+          exit 1
+        fi
+        # El codigo HTTP se evalua explicitamente: sin esto una redireccion 3xx
+        # dejaria el job en verde sin haber desplegado nada.
+        response_file="$(mktemp)"
+        http_status="$(curl --silent --show-error --max-time 30 \
+          --output "${response_file}" --write-out '%{http_code}' \
+          -X POST "${RENDER_DEPLOY_HOOK_URL}")" || {
+            echo "::error::No se pudo contactar el Deploy Hook de Render (fallo de red o timeout)."
+            exit 1
+          }
+        echo "Render respondio HTTP ${http_status}"
+        # El cuerpo trae el id del deploy: es diagnostico, no el gate. Si no se
+        # puede leer se avisa explicitamente en vez de taparlo con "|| true".
+        if [ -f "${response_file}" ]; then
+          cat "${response_file}"
+        else
+          echo "::warning::No se pudo leer el cuerpo de la respuesta del Deploy Hook."
+        fi
+        # Un estado vacio o no numerico haria fallar el test numerico sin abortar
+        # el job (bash -e no sale dentro de la condicion de un if).
+        case "${http_status}" in
+          [0-9][0-9][0-9]) ;;
+          *)
+            echo "::error::El Deploy Hook devolvio un estado HTTP invalido ('${http_status}')."
+            exit 1
+            ;;
+        esac
+        if [ "${http_status}" -lt 200 ] || [ "${http_status}" -ge 300 ]; then
+          echo "::error::Render no acepto el deploy (HTTP ${http_status})."
+          exit 1
+        fi

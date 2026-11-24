@@ -3,6 +3,7 @@ package com.example.gradox2.service.implementation;
 import java.time.Instant;
 import java.util.List;
 
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -32,12 +33,18 @@ import com.example.gradox2.service.interfaces.IGlobalConfigService;
 import com.example.gradox2.service.interfaces.IVoteService;
 import com.example.gradox2.security.DegreeAccessGuard;
 import com.example.gradox2.utils.AfterCommit;
-import com.example.gradox2.utils.GetAuthUser;
-import com.example.gradox2.utils.mapper.VoteMapper;
+import com.example.gradox2.utils.GetAuthUser;import com.example.gradox2.utils.mapper.VoteMapper;
 
 @Service
 @Transactional
 public class VoteServiceImpl implements IVoteService {
+
+    private static final org.slf4j.Logger logger =
+            org.slf4j.LoggerFactory.getLogger(VoteServiceImpl.class);
+
+    /** WAVE2 S5: propuestas vencidas por página y tope defensivo de páginas por tick. */
+    private static final int EXPIRATION_PAGE_SIZE = 100;
+    private static final int MAX_EXPIRATION_PAGES = 50;
 
     private final FileRepository fileRepository;
     private final UserRepository userRepository;
@@ -175,14 +182,36 @@ public class VoteServiceImpl implements IVoteService {
 
     @Override
     public int closeExpiredProposals() {
-        List<Proposal> expired = proposalRepository.findByStatusAndEndsAtBefore(
-                ProposalStatus.PENDING, Instant.now());
+        // WAVE2 S5: páginas de tamaño fijo y siempre la página 0, porque cada cierre saca la propuesta
+        // del conjunto de vencidas. El tope de páginas evita un tick infinito si algo deja una propuesta
+        // vencida sin cerrar.
+        int closed = 0;
+        for (int page = 0; page < MAX_EXPIRATION_PAGES; page++) {
+            List<Proposal> expired = proposalRepository.findByStatusAndEndsAtBefore(
+                    ProposalStatus.PENDING, Instant.now(),
+                    PageRequest.of(0, EXPIRATION_PAGE_SIZE));
+            if (expired.isEmpty()) {
+                break;
+            }
 
-        for (Proposal proposal : expired) {
-            rejectProposal(proposal);
+            int closedInPage = 0;
+            for (Proposal proposal : expired) {
+                // Idempotencia: una propuesta ya cerrada no se vuelve a cerrar, auditar ni penalizar.
+                if (proposal.getStatus() != ProposalStatus.PENDING) {
+                    continue;
+                }
+                rejectProposal(proposal);
+                closedInPage++;
+            }
+            closed += closedInPage;
+
+            if (closedInPage == 0) {
+                logger.warn("Se encontraron {} propuestas vencidas pero ninguna se pudo cerrar; se corta el tick.",
+                        expired.size());
+                break;
+            }
         }
-
-        return expired.size();
+        return closed;
     }
 
     // ──────────────────────────────────────────────
@@ -287,6 +316,10 @@ public class VoteServiceImpl implements IVoteService {
     }
 
     private void rejectProposal(Proposal proposal) {
+        // Idempotencia: cerrar dos veces descontaría reputación y auditaría dos veces la misma propuesta.
+        if (proposal.getStatus() != ProposalStatus.PENDING) {
+            return;
+        }
         if (proposal instanceof FileProposal fp && fp.getTempFile() != null) {
             addReputation(fp.getTempFile().getUploader(), -5.0);
         }

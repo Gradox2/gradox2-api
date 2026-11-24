@@ -36,10 +36,10 @@ public class AdminProposalController {
 
     @GetMapping
     @PreAuthorize("hasRole('ADMIN')")
-    @Operation(summary = "Listar todas las propuestas", description = "Devuelve todas las propuestas (subidas, borrados, promociones, cambios de política) paginadas (solo MASTER)")
+    @Operation(summary = "Listar todas las propuestas", description = "Devuelve todas las propuestas (subidas, borrados, promociones, cambios de política) paginadas (solo ADMIN)")
     @ApiResponses({
         @ApiResponse(responseCode = "200", description = "Listado de propuestas"),
-        @ApiResponse(responseCode = "403", description = "No autorizado (se requiere MASTER)", content = @Content)
+        @ApiResponse(responseCode = "403", description = "No autorizado (se requiere ADMIN)", content = @Content)
     })
     public ResponseEntity<Page<AdminProposalResponse>> getAllProposals(
             @Parameter(description = "Número de página (base 0)") @RequestParam(defaultValue = "0") @Min(0) int page,

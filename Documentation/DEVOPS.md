@@ -45,8 +45,10 @@ para la persistencia y el almacenamiento de archivos:
   solo se persiste la **clave del objeto** (`object_key`, `profile_picture_key`,
   `icon_key`) en las tablas `files`, `temp_files`, `users` y `badges`. La base de
   datos no almacena binarios ni large objects (`oid`).
-- **Correo**: la app envía emails (verificación de cuenta, reseteo de contraseña)
-  vía **Gmail SMTP** configurado por variables de entorno.
+- **Correo**: la app envía emails (verificación de cuenta, reseteo de contraseña). En producción
+  sale por la **API HTTP de Brevo (443)** porque **Render bloquea la salida SMTP en 25, 465 y 587**;
+  en local se usa SMTP (MailHog o consola). El transporte se elige con `app.mail.transport`
+  (`brevo` en prod, `smtp` en local y test).
 - El frontend y el backend se construyen y despliegan desde repositorios distintos.
   Swagger/OpenAPI está desactivado en producción.
 
@@ -63,13 +65,13 @@ para la persistencia y el almacenamiento de archivos:
 | Seguridad | Spring Security + JWT | jjwt 0.11.5 | HS256, BCrypt para passwords |
 | **S3 / almacenamiento** | AWS SDK v2 (`s3`) | 2.50.2 | BOM `software.amazon.awssdk:bom:2.50.2` en `dependencyManagement` |
 | Documentación API | springdoc-openapi | 2.8.6 | **desactivada en prod** |
-| Monitorización | Spring Boot Actuator | incluida | `/actuator/health`, `/actuator/info` |
-| Email | spring-boot-starter-mail | incluida | SMTP Gmail (STARTTLS :587) |
+| Monitorización | Spring Boot Actuator | incluida | `/actuator/health` (público, sin detalles), `/actuator/info`, `/actuator/metrics` (**solo ADMIN**) |
+| Email | spring-boot-starter-mail + `RestClient` | incluida | **Brevo vía HTTPS (443)** en prod; SMTP solo en local |
 | Base de datos | PostgreSQL | 16+ | **Supabase gestionado** (SSL) |
 | Object storage | Cloudflare R2 / MinIO | — | endpoint S3 compatible, path-style |
 | Build | Maven (wrapper) | 3.x vía `./mvnw` | imagen base `eclipse-temurin:21` |
 | Contenedores | Docker + Docker Compose | Compose v2 | perfil `full` |
-| Test | JUnit 5 + MockMvc | Boot test | H2 en memoria, 213 tests (+ migraciones contra PostgreSQL real en CI) |
+| Test | JUnit 5 + MockMvc | Boot test | H2 en memoria, 236 tests (+ migraciones contra PostgreSQL real en CI) |
 
 ### Versiones clave del stack Docker
 - `eclipse-temurin:21-jdk` — stage de build del Dockerfile
@@ -158,10 +160,14 @@ Los entornos se seleccionan con `SPRING_PROFILES_ACTIVE`.
 | `S3_ACCESS_KEY` | Access Key ID | sí | credencial R2 (o `minioadmin` en dev) |
 | `S3_SECRET_KEY` | Secret Access Key | sí | credencial R2 (o `minioadmin` en dev) |
 | `S3_BUCKET_NAME` | Bucket de objetos | sí | `gradox2-files` (debe existir en R2; en MinIO se crea en arranque) |
-| `SPRING_MAIL_HOST` | Host SMTP | sí | `smtp.gmail.com` |
-| `SPRING_MAIL_PORT` | Puerto SMTP | sí | `587` (STARTTLS) |
-| `SPRING_MAIL_USERNAME` | Cuenta SMTP | sí | `gradox2App@gmail.com` |
-| `SPRING_MAIL_PASSWORD` | App password SMTP | sí | contraseña de aplicación de Gmail |
+| `MAIL_TRANSPORT` | Transporte de correo: `brevo` o `smtp` (solo local) | no | `smtp` en local; en prod está fijado en `brevo` |
+| `BREVO_API_KEY` | API key de Brevo (envío por HTTPS) | **sí** | Dashboard de Brevo → SMTP & API → API Keys |
+| `MAIL_FROM` | Remitente **verificado** en Brevo | **sí** | `gradox2App@gmail.com` |
+| `MAIL_FROM_NAME` | Nombre visible del remitente | no | `Gradox2` |
+| `SPRING_MAIL_HOST` | Host SMTP (solo si `MAIL_TRANSPORT=smtp`) | no | `smtp.gmail.com` en local |
+| `SPRING_MAIL_PORT` | Puerto SMTP (solo `smtp`) | no | `587` (STARTTLS) |
+| `SPRING_MAIL_USERNAME` | Cuenta SMTP (solo `smtp`) | no | — |
+| `SPRING_MAIL_PASSWORD` | App password SMTP (solo `smtp`) | no | — |
 | `SPRING_MAIL_SMTP_AUTH` | Autenticación SMTP | sí | `true` |
 | `SPRING_MAIL_SMTP_STARTTLS` | STARTTLS | sí | `true` |
 | `SPRING_PROFILES_ACTIVE` | Perfil activo | sí | **`prod`** |
@@ -172,9 +178,13 @@ Los entornos se seleccionan con `SPRING_PROFILES_ACTIVE`.
 | `RATE_LIMIT_MAX_BUCKETS` | Claves de rate limit simultáneas | no | `10000` |
 | `RATE_LIMIT_BUCKET_TTL_MS` | Vida de un bucket sin actividad (ms) | no | `1800000` |
 | `APP_BASE_URL` | URL pública para enlaces de email | **sí (pendiente)** | ver §6 |
-| `BOOTSTRAP_MASTER_USERNAME` | Primer MASTER (solo primer arranque) | **sí (pendiente)** | ver §6 |
-| `BOOTSTRAP_MASTER_PASSWORD` | Password del primer MASTER | **sí (pendiente)** | ver §6 |
-| `BOOTSTRAP_MASTER_EMAIL` | Email del primer MASTER | **sí (pendiente)** | ver §6 |
+| `CACHE_TTL_SECONDS` | Vida de una entrada de la caché de catálogo | no | `600` |
+| `CACHE_MAX_SIZE` | Entradas máximas por caché de catálogo | no | `1000` |
+| `S3_API_CALL_TIMEOUT_MS` | Timeout total de una llamada a S3/R2 | no | `10000` |
+| `S3_API_CALL_ATTEMPT_TIMEOUT_MS` | Timeout por intento de una llamada a S3/R2 | no | `5000` |
+| `BOOTSTRAP_MASTER_USERNAME` | Primer MASTER (master del grado por defecto, solo primer arranque) | **sí (pendiente)** | ver §5 |
+| `BOOTSTRAP_MASTER_PASSWORD` | Password del primer MASTER | **sí (pendiente)** | ver §5 |
+| `BOOTSTRAP_MASTER_EMAIL` | Email del primer MASTER | **sí (pendiente)** | ver §5 |
 
 > Las antiguas variables `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB`
 > **ya no son necesarias**: la BD es gestionada (Supabase). Solo quedan en el
@@ -184,7 +194,12 @@ Los entornos se seleccionan con `SPRING_PROFILES_ACTIVE`.
 > `BOOTSTRAP_MASTER_USERNAME`, `BOOTSTRAP_MASTER_PASSWORD`,
 > `BOOTSTRAP_MASTER_EMAIL`. Si el bootstrap queda vacío, **no se creará ningún
 > usuario MASTER** y, como el registro solo crea cuentas `USER` y el ascenso a
-> MASTER requiere votación de otros MASTERs, **la plataforma quedaría sin administradores**.
+> MASTER requiere votación de otros MASTERs, **la plataforma quedaría sin masters y
+> sin gobernanza**.
+>
+> `BOOTSTRAP_MASTER_*` crea un **`MASTER` del grado por defecto**, no el
+> administrador de plataforma: los roles están separados (`GRADOS.md` §6.1). El
+> panel `/admin/**` exige `ADMIN` y ese rol **no se crea por env** (ver «Paso 3 bis» en §5).
 
 ---
 
@@ -219,7 +234,7 @@ docker build --network=host -t gradox2-app:latest -f Docker/Dockerfile .
 ### Build manual (sin Docker), para validar tests
 ```bash
 cd Gradox2/gradox2
-./mvnw test          # 213 tests (H2 + fake S3)
+./mvnw test          # 236 tests (H2 + fake S3)
 # Migraciones + mapeo JPA contra PostgreSQL real (lo corre el job `migrations` de CI):
 POSTGRES_TEST_URL=jdbc:postgresql://localhost:5432/gradoxdb ./mvnw test -Dtest=PostgresMigrationIT
 ./mvnw package -DskipTests
@@ -234,7 +249,7 @@ POSTGRES_TEST_URL=jdbc:postgresql://localhost:5432/gradoxdb ./mvnw test -Dtest=P
 - Puerto libre: **8080** (app).
 - ~1-2 GB RAM y ~1 CPU para el stack (límite del compose: app 1024m/768m).
 - Red de salida a **Supabase** (puerto 5432, requiere **IPv6 o IPv4 habilitado**
-  según el proyecto Supabase) y al **SMTP de Gmail** (587) y al **endpoint de R2**
+  según el proyecto Supabase), a **`api.brevo.com:443`** (correo en producción) y al **endpoint de R2**
   (HTTPS).
 
 ### Paso 1 — Crear los recursos externos
@@ -257,7 +272,8 @@ cp Docker/.env.example Docker/.env
 #   - SPRING_MAIL_*  (credenciales de la cuenta Gmail)
 #   - JWT_SECRET  (>= 32 bytes)
 #   - APP_BASE_URL  → http://<IP-o-dominio>:8080   (sin HTTPS por ahora)
-#   - BOOTSTRAP_MASTER_*  → credenciales del primer administrador
+#   - BOOTSTRAP_MASTER_*  → credenciales del primer master del grado por defecto
+#     (el primer ADMIN de plataforma se nombra por SQL: §5 «Paso 3 bis»)
 #   - SPRING_PROFILES_ACTIVE=prod
 ```
 
@@ -275,16 +291,48 @@ En el **primer arranque**:
    las entidades JPA; si hay mismatch, **falla el arranque** a propósito).
 3. `MasterBootstrap` crea el primer usuario **MASTER** a partir de
    `BOOTSTRAP_MASTER_*` (solo si no existe ya; es idempotente y nunca loguea la
-   contraseña).
+   contraseña). Ese usuario es master del grado por defecto, no de la plataforma.
+
+### Paso 3 bis — Nombrar el primer `ADMIN` (obligatorio, una sola vez)
+
+Los cuatro roles son excluyentes (`GUEST`, `USER`, `MASTER`, `ADMIN`) y
+`/admin/**` exige `ADMIN`: ni el bootstrap ni ninguna votación lo crean. Sin este
+paso **nadie puede banear, auditar, administrar propuestas ni corregir grados**
+(el resto de la API funciona igual). Se hace por SQL contra Supabase, en el
+SQL Editor del dashboard:
+
+```sql
+-- Administrador de plataforma (acceso a /admin/**, no vota, no se promociona)
+UPDATE users SET role = 'ADMIN' WHERE username = '<usuario-admin>';
+```
+
+Verificación: login con ese usuario y `curl -s -H "Authorization: Bearer <token>" \
+https://<host>/admin/audit` debe responder `200` (con un `MASTER` responde `403`).
+El identificador del rol vive en la columna `users.role`; el enum completo está en
+`UserRole`. Detalle de la separación de roles: `GRADOS.md` §6.1 y §6.4.
 
 ### Paso 4 — Verificar el despliegue
+
+> **Caché de catálogo (WAVE2)**: grados, cursos y asignaturas se sirven desde Caffeine, con
+> `CACHE_MAX_SIZE` entradas y `CACHE_TTL_SECONDS` de vida. El catálogo solo cambia por migraciones, así
+> que tras una migración que lo modifique hay que reiniciar el servicio (no hay endpoint de invalidación).
+
 ```bash
 # Estado de los contenedores
 docker compose --env-file Docker/.env -f Docker/docker-compose.yml ps
 
 # Health de la app (comprueba app + PostgreSQL + disco)
+# Público: solo el estado agregado. Los detalles exigen autenticación (show-details=when-authorized).
 curl -s http://localhost:8080/actuator/health
-# → {"status":"UP","components":{"db":{...UP...},"diskSpace":{...}},...}
+# → {"status":"UP"}
+
+# Detalles de componentes, con token de ADMIN
+curl -s -H "Authorization: Bearer <token-admin>" http://localhost:8080/actuator/health
+
+# Métricas internas: SOLO con token de ADMIN (401 sin token, 403 con USER o MASTER)
+curl -s -H "Authorization: Bearer <token-admin>" http://localhost:8080/actuator/metrics
+curl -s -H "Authorization: Bearer <token-admin>" http://localhost:8080/actuator/metrics/http.server.requests
+```
 
 # Liveness / readiness
 curl -s http://localhost:8080/actuator/health/liveness
@@ -507,9 +555,9 @@ Base URL: `http://<host>:8080` (sin HTTPS por ahora). Lista detallada en
 | GET | `/courses[/{id}]` | público | catálogo de cursos con sus asignaturas (con caché) |
 | GET | `/stats` | público | estadísticas (archivos, espacio, descargas…) |
 | PUT/DELETE | `/users/me/profile-picture` | autenticado | foto de perfil (WebP + recorte, limpia el objeto S3 anterior) |
-| PUT | `/admin/users/{id}/ban` · `/unban` | MASTER | moderación de usuarios |
-| GET | `/admin/audit` | MASTER | registro de auditoría (actor, tipo, rango de fechas, paginación) |
-| GET | `/admin/proposals` | MASTER | todas las propuestas (subida, borrado, expulsión, config) |
+| PUT | `/admin/users/{id}/ban` · `/unban` | ADMIN | moderación de usuarios |
+| GET | `/admin/audit` | ADMIN | registro de auditoría (actor, tipo, rango de fechas, paginación) |
+| GET | `/admin/proposals` | ADMIN | todas las propuestas (subida, borrado, expulsión, config) |
 | GET | `/health` · `/actuator/health/**` · `/actuator/info` | público | healthcheck / info |
 | — | `/swagger-ui/**`, `/v3/api-docs/**` | **desactivado en prod** | solo disponible en local/dev |
 
@@ -544,9 +592,10 @@ Base URL: `http://<host>:8080` (sin HTTPS por ahora). Lista detallada en
 - [ ] `SPRING_PROFILES_ACTIVE=prod`.
 - [ ] `APP_BASE_URL` apunta a la URL pública real.
 - [ ] `BOOTSTRAP_MASTER_USERNAME/PASSWORD/EMAIL` rellenos (si no, no habrá admin).
-- [ ] Credenciales SMTP de Gmail correctas y con permiso para enviar.
+- [ ] `BREVO_API_KEY` cargada en Render y `MAIL_FROM` **verificado** en Brevo (sin remitente verificado,
+      la API responde 400 y el correo no sale).
 - [ ] Build: `docker build --network=host -f Docker/Dockerfile .` OK.
-- [ ] Tests: `./mvnw test` → 213/213 OK (en el directorio `gradox2/`).
+- [ ] Tests: `./mvnw test` → 236/236 OK (en el directorio `gradox2/`).
 - [ ] Migraciones: `POSTGRES_TEST_URL=... ./mvnw test -Dtest=PostgresMigrationIT` → OK
       (aplica V1..V16 sobre PostgreSQL 16, valida el mapeo JPA y los índices; también corre en CI).
 - [ ] `docker compose --env-file Docker/.env -f Docker/docker-compose.yml config --quiet` no da errores.
@@ -573,8 +622,42 @@ Base URL: `http://<host>:8080` (sin HTTPS por ahora). Lista detallada en
 | Enlaces de verificación apuntan a `localhost` | `APP_BASE_URL` sin cambiar | fijar URL pública en `Docker/.env` |
 | No hay forma de crear el primer admin | `BOOTSTRAP_MASTER_*` vacíos | rellenar y reiniciar la app (es idempotente) |
 | Swagger/OpenAPI no responde en prod | desactivado a propósito | esperado; no re-activar en prod |
-| Contraseña de Gmail rechazada | SMTP necesita "contraseña de aplicación" | generar app password en la cuenta de Google |
+| El correo no llega en Render y el log dice `MailDeliveryException` | Render bloquea SMTP saliente (25/465/587) | usar `MAIL_TRANSPORT=brevo` con `BREVO_API_KEY` (HTTPS/443) |
+| Brevo responde 400 con "sender not valid" | El remitente no está verificado en Brevo | verificar `MAIL_FROM` en Brevo → Senders |
+| El correo llega pero el enlace de verificación no abre | `APP_BASE_URL` apunta al host equivocado | `APP_BASE_URL` debe ser la URL pública del backend, con `https://` |
 | App se detiene de golpe con OOM | `-XX:+ExitOnOutOfMemoryError` + límite pequeño | subir `mem_limit` del servicio `app` |
+
+---
+
+## 13.1 Deploy continuo (CI antes que deploy)
+
+El job `deploy` de `.github/workflows/ci.yml` dispara el **Deploy Hook** del
+servicio de Render únicamente cuando `build-and-test`, `migrations` y `openapi`
+terminan bien sobre `main`. Un pull request nunca despliega, y `migrations` está
+en el `needs` a propósito: Flyway corre al arrancar la app, así que una migración
+rota tumba el servicio recién desplegado.
+
+1. **Crear el hook**: Render → servicio → *Settings* → *Deploy Hook* → copiar la
+   URL completa (`https://api.render.com/deploy/srv-...?key=...`).
+2. **Guardarlo como secret**: GitHub → repo → *Settings* → *Secrets and variables*
+   → *Actions* → *New repository secret* → nombre **`RENDER_DEPLOY_HOOK_URL`** →
+   pegar la URL completa.
+3. **Desactivar Auto-Deploy en Render** (*Settings* → *Build & Deploy* →
+   Auto-Deploy: **No**). Si queda activo, Render despliega en cada push por su
+   cuenta y el gate de tests no bloquea nada.
+4. **Re-desplegar a mano**: *Actions* → *Java CI with Maven* → *Run workflow*
+   (trigger `workflow_dispatch`).
+
+> ⚠️ **El hook es una credencial**, no una URL informativa: quien la tenga puede
+> disparar despliegues del servicio. Vive solo en el secret, nunca en el repo, un
+> `.env` versionado, un log o un issue. Si se filtra, se regenera en Render y se
+> actualiza el secret.
+
+Si el secret falta, el hook responde un código distinto de 2xx o la conexión
+falla, el job falla con `::error::` en vez de quedarse en verde sin desplegar
+(una redirección 3xx no cuenta como deploy aceptado). El código HTTP y el cuerpo
+de la respuesta de Render se imprimen en el log para poder rastrear el deploy
+disparado.
 
 ---
 

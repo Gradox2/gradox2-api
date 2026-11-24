@@ -28,7 +28,7 @@ import jakarta.validation.constraints.Positive;
 
 @RestController
 @RequestMapping("/admin/users")
-@Tag(name = "Administración", description = "Gestión de usuarios por MASTER (baneo y rehabilitación)")
+@Tag(name = "Administración", description = "Gestión de usuarios de plataforma (solo ADMIN: baneo, rehabilitación y override de grado)")
 public class AdminController {
 
     private final IUserService userService;
@@ -39,10 +39,10 @@ public class AdminController {
 
     @PutMapping("/{id}/ban")
     @PreAuthorize("hasRole('ADMIN')")
-    @Operation(summary = "Banear usuario", description = "Bloquea el acceso de un usuario (solo MASTER)")
+    @Operation(summary = "Banear usuario", description = "Bloquea el acceso de un usuario (solo ADMIN)")
     @ApiResponses({
         @ApiResponse(responseCode = "200", description = "Usuario baneado"),
-        @ApiResponse(responseCode = "403", description = "No autorizado (se requiere MASTER)", content = @Content),
+        @ApiResponse(responseCode = "403", description = "No autorizado (se requiere ADMIN)", content = @Content),
         @ApiResponse(responseCode = "404", description = "Usuario no encontrado", content = @Content)
     })
     public ResponseEntity<String> banUser(
@@ -54,10 +54,10 @@ public class AdminController {
 
     @PutMapping("/{id}/unban")
     @PreAuthorize("hasRole('ADMIN')")
-    @Operation(summary = "Rehabilitar usuario", description = "Desbloquea el acceso de un usuario previamente baneado (solo MASTER)")
+    @Operation(summary = "Rehabilitar usuario", description = "Desbloquea el acceso de un usuario previamente baneado (solo ADMIN)")
     @ApiResponses({
         @ApiResponse(responseCode = "200", description = "Usuario rehabilitado"),
-        @ApiResponse(responseCode = "403", description = "No autorizado (se requiere MASTER)", content = @Content),
+        @ApiResponse(responseCode = "403", description = "No autorizado (se requiere ADMIN)", content = @Content),
         @ApiResponse(responseCode = "404", description = "Usuario no encontrado", content = @Content)
     })
     public ResponseEntity<String> unbanUser(
@@ -68,10 +68,10 @@ public class AdminController {
 
     @GetMapping("/banned")
     @PreAuthorize("hasRole('ADMIN')")
-    @Operation(summary = "Listar usuarios baneados", description = "Devuelve los usuarios deshabilitados paginados (solo MASTER)")
+    @Operation(summary = "Listar usuarios baneados", description = "Devuelve los usuarios deshabilitados paginados (solo ADMIN)")
     @ApiResponses({
         @ApiResponse(responseCode = "200", description = "Listado de baneados"),
-        @ApiResponse(responseCode = "403", description = "No autorizado (se requiere MASTER)", content = @Content)
+        @ApiResponse(responseCode = "403", description = "No autorizado (se requiere ADMIN)", content = @Content)
     })
     public ResponseEntity<Page<BannedUserResponse>> getBannedUsers(
             @Parameter(description = "Número de página (base 0)") @RequestParam(defaultValue = "0") int page,

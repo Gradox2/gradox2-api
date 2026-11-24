@@ -91,6 +91,9 @@ public class FileServiceImpl implements IFileService {
         return FileDownloadResponse.builder().url(url).build();
     }
 
+    // WAVE2 S4: el mapeo lee `scores` (lazy, con @BatchSize). Sin transacción, la sesión se cierra
+    // dentro del repositorio y el mapeo dependía de OSIV para no explotar: una consulta por archivo.
+    @Transactional(readOnly = true)
     public List<FileResponse> getAllFiles() {
         User viewer = GetAuthUser.getCurrentUserOrNull();
         return fileRepository.findAllWithDetails(PageRequest.of(0, MAX_LIST_SIZE)).stream()

@@ -88,6 +88,10 @@ public class SecurityConfig {
                                 .requestMatchers(HttpMethod.GET, "/badges/**").permitAll()
                                 .requestMatchers(HttpMethod.GET, "/stats/**").permitAll()
                                 .requestMatchers("/api/auth/**").permitAll()
+                                // WAVE2 S1: las métricas describen el estado interno del servicio
+                                // (logins fallidos, pool de conexiones, latencias). Sólo el ADMIN de
+                                // plataforma las lee; /actuator/health sigue público y sin detalles.
+                                .requestMatchers("/actuator/metrics", "/actuator/metrics/**").hasRole("ADMIN")
                                 .requestMatchers("/health**", "/actuator/health/**", "/actuator/info").permitAll()
                                 .requestMatchers("/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**").permitAll()
                                 .anyRequest().authenticated()
