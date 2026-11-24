@@ -82,13 +82,21 @@ class BrevoMailTransportTest {
         }
 
         assertThat(prod.getProperty("app.mail.transport"))
-                .as("producción no puede usar SMTP: Render bloquea 25/465/587")
-                .isEqualTo("${MAIL_TRANSPORT:brevo}");
+                .as("producción no puede usar SMTP: Render bloquea 25/465/587, así que no hay override")
+                .isEqualTo("brevo");
         assertThat(prod.getProperty("app.mail.api-key"))
                 .as("la API key de Brevo entra por variable de entorno")
                 .isEqualTo("${BREVO_API_KEY:}");
         assertThat(prod.getProperty("app.mail.from"))
-                .as("el remitente debe ser una dirección verificada en Brevo")
-                .isEqualTo("${MAIL_FROM:gradox2App@gmail.com}");
+                .as("sin MAIL_FROM no hay remitente implícito: el arranque debe fallar")
+                .isEqualTo("${MAIL_FROM:}");
+    }
+
+    @Test
+    void missingSenderFailsFastInsteadOfGuessingOne() {
+        assertThatThrownBy(() -> new BrevoMailTransport(API_KEY, "", "Gradox2",
+                BrevoMailTransport.DEFAULT_API_URL))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("MAIL_FROM");
     }
 }

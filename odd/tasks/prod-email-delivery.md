@@ -12,7 +12,8 @@ con la cuenta creada pero deshabilitada, sin forma de verificarse salvo tocar la
 - **S3** — El alta de usuario no depende del correo: si el proveedor falla, la cuenta queda creada y
   pendiente, el fallo se reintenta una vez y queda en el log con el destinatario (WAVE2 S2).
 - **S4** — Un transporte mal configurado no arranca en silencio: con `app.mail.transport=brevo` y sin
-  `BREVO_API_KEY` (o sin `MAIL_FROM`), el arranque falla con un mensaje que nombra la variable faltante.
+  `BREVO_API_KEY`, sin `MAIL_FROM` o con un remitente vacío, el arranque falla con un mensaje que nombra la
+  variable faltante. No hay remitente implícito ni override de transporte en el perfil de producción.
 - **S5** — «Esperar el fix de correo y mergear todo junto»: Ola 1, Ola 2 y este fix viajan en un solo
   PR y un solo deploy.
 
@@ -44,10 +45,16 @@ con la cuenta creada pero deshabilitada, sin forma de verificarse salvo tocar la
 - **E1** — `BrevoMailTransportTest` 4/4 (contrato de la API, `api-key`, remitente, rechazo 401 → fallo de
   entrega, y arranque sin API key), `EmailServiceAsyncTest` 4/4 y `MailFailureToleranceIntegrationTest` 2/2.
 - **E2** — Suite completa: **235 tests, 0 fallos** (`./mvnw test`, 2m09s).
+- **E3** — Verificación independiente (`gentle-ai-verify`): S2 y S3 PASS, S1 PARTIAL y **S4 FAIL
+  bloqueante**. Dos correcciones: (a) el perfil de producción ya no acepta `MAIL_TRANSPORT=smtp` — está
+  fijado en `brevo`, porque en Render SMTP es un error de configuración, no una opción; (b) `MAIL_FROM`
+  perdió su valor por defecto, así que un remitente sin configurar rompe el arranque en vez de intentar
+  enviar desde una dirección quizá no verificada. S5 quedó sin verificar en su momento porque el merge
+  todavía no había ocurrido. `BrevoMailTransportTest` pasó a 5 casos.
 
 ## Cierre
 
 | Tarea | Commit |
 | --- | --- |
 | T1+T2 | `fix(mail): send production mail through brevo over https` |
-| T3 | merge `feat/wave1-hardening` → `main` (PR #45) |
+| T3 | merge `feat/wave1-hardening` → `main` (pendiente de ejecutar al cierre) |

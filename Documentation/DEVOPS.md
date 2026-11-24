@@ -160,7 +160,7 @@ Los entornos se seleccionan con `SPRING_PROFILES_ACTIVE`.
 | `S3_ACCESS_KEY` | Access Key ID | sí | credencial R2 (o `minioadmin` en dev) |
 | `S3_SECRET_KEY` | Secret Access Key | sí | credencial R2 (o `minioadmin` en dev) |
 | `S3_BUCKET_NAME` | Bucket de objetos | sí | `gradox2-files` (debe existir en R2; en MinIO se crea en arranque) |
-| `MAIL_TRANSPORT` | Transporte de correo: `brevo` o `smtp` | no | `brevo` en prod (default del perfil) |
+| `MAIL_TRANSPORT` | Transporte de correo: `brevo` o `smtp` (solo local) | no | `smtp` en local; en prod está fijado en `brevo` |
 | `BREVO_API_KEY` | API key de Brevo (envío por HTTPS) | **sí** | Dashboard de Brevo → SMTP & API → API Keys |
 | `MAIL_FROM` | Remitente **verificado** en Brevo | **sí** | `gradox2App@gmail.com` |
 | `MAIL_FROM_NAME` | Nombre visible del remitente | no | `Gradox2` |
