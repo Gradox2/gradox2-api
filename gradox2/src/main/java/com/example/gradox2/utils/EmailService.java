@@ -6,32 +6,32 @@ import java.util.concurrent.RejectedExecutionException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.mail.SimpleMailMessage;
-import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Service;
+
+import com.example.gradox2.utils.mail.MailTransport;
 
 @Service
 public class EmailService {
     private static final Logger logger = LoggerFactory.getLogger(EmailService.class);
 
-    /** Un solo reintento: el SMTP de Gmail falla por ráfagas, no por caídas largas. */
+    /** Un solo reintento: los proveedores fallan por ráfagas, no por caídas largas. */
     private static final int MAX_ATTEMPTS = 2;
     private static final long RETRY_DELAY_MS = 200L;
 
-    private final JavaMailSender mailSender;
+    private final MailTransport transport;
     private final Executor executor;
 
-    public EmailService(JavaMailSender mailSender, @Qualifier("taskExecutor") Executor executor) {
-        this.mailSender = mailSender;
+    public EmailService(MailTransport transport, @Qualifier("taskExecutor") Executor executor) {
+        this.transport = transport;
         this.executor = executor;
     }
 
     /**
      * Encola el envío en el executor de correo.
      *
-     * <p>WAVE2 S2: el alta de usuario y el reset de contraseña no pueden depender del SMTP. Ni el
-     * rechazo de la tarea (pool lleno) ni el fallo de envío salen de este método: se registran con el
-     * destinatario y, en el caso del envío, se reintentan una vez.
+     * <p>WAVE2 S2: el alta de usuario y el reset de contraseña no pueden depender del proveedor de
+     * correo. Ni el rechazo de la tarea (pool lleno) ni el fallo de envío salen de este método: se
+     * registran con el destinatario y, en el caso del envío, se reintentan una vez.
      */
     public void sendEmail(String to, String subject, String body) {
         try {
@@ -44,11 +44,7 @@ public class EmailService {
     private void deliverWithRetry(String to, String subject, String body) {
         for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
             try {
-                SimpleMailMessage message = new SimpleMailMessage();
-                message.setTo(to);
-                message.setSubject(subject);
-                message.setText(body);
-                mailSender.send(message);
+                transport.send(to, subject, body);
                 logger.info("Correo enviado a: {}", to);
                 return;
             } catch (Exception e) {

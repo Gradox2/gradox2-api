@@ -16,7 +16,7 @@ Notas:
 - El acceso a **S3 se simula con un fake en memoria** (`TestS3Config`): no se toca
   red ni se necesita MinIO/R2 para pasar los tests. Incluye un **signer fake**
   (`FileUrlSigner`) que devuelve URLs firmadas sin tocar red.
-- Ejecución más reciente: **231 tests, 0 fallos, 0 errores** (`./mvnw test`).
+- Ejecución más reciente: **235 tests, 0 fallos, 0 errores** (`./mvnw test`).
 - Las migraciones Flyway no pueden correr sobre H2: se validan con
   `PostgresMigrationIT` contra PostgreSQL real (job `migrations` de CI).
 

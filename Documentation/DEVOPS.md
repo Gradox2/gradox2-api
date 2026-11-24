@@ -45,8 +45,10 @@ para la persistencia y el almacenamiento de archivos:
   solo se persiste la **clave del objeto** (`object_key`, `profile_picture_key`,
   `icon_key`) en las tablas `files`, `temp_files`, `users` y `badges`. La base de
   datos no almacena binarios ni large objects (`oid`).
-- **Correo**: la app envía emails (verificación de cuenta, reseteo de contraseña)
-  vía **Gmail SMTP** configurado por variables de entorno.
+- **Correo**: la app envía emails (verificación de cuenta, reseteo de contraseña). En producción
+  sale por la **API HTTP de Brevo (443)** porque **Render bloquea la salida SMTP en 25, 465 y 587**;
+  en local se usa SMTP (MailHog o consola). El transporte se elige con `app.mail.transport`
+  (`brevo` en prod, `smtp` en local y test).
 - El frontend y el backend se construyen y despliegan desde repositorios distintos.
   Swagger/OpenAPI está desactivado en producción.
 
@@ -64,12 +66,12 @@ para la persistencia y el almacenamiento de archivos:
 | **S3 / almacenamiento** | AWS SDK v2 (`s3`) | 2.50.2 | BOM `software.amazon.awssdk:bom:2.50.2` en `dependencyManagement` |
 | Documentación API | springdoc-openapi | 2.8.6 | **desactivada en prod** |
 | Monitorización | Spring Boot Actuator | incluida | `/actuator/health` (público, sin detalles), `/actuator/info`, `/actuator/metrics` (**solo ADMIN**) |
-| Email | spring-boot-starter-mail | incluida | SMTP Gmail (STARTTLS :587) |
+| Email | spring-boot-starter-mail + `RestClient` | incluida | **Brevo vía HTTPS (443)** en prod; SMTP solo en local |
 | Base de datos | PostgreSQL | 16+ | **Supabase gestionado** (SSL) |
 | Object storage | Cloudflare R2 / MinIO | — | endpoint S3 compatible, path-style |
 | Build | Maven (wrapper) | 3.x vía `./mvnw` | imagen base `eclipse-temurin:21` |
 | Contenedores | Docker + Docker Compose | Compose v2 | perfil `full` |
-| Test | JUnit 5 + MockMvc | Boot test | H2 en memoria, 231 tests (+ migraciones contra PostgreSQL real en CI) |
+| Test | JUnit 5 + MockMvc | Boot test | H2 en memoria, 235 tests (+ migraciones contra PostgreSQL real en CI) |
 
 ### Versiones clave del stack Docker
 - `eclipse-temurin:21-jdk` — stage de build del Dockerfile
@@ -158,10 +160,14 @@ Los entornos se seleccionan con `SPRING_PROFILES_ACTIVE`.
 | `S3_ACCESS_KEY` | Access Key ID | sí | credencial R2 (o `minioadmin` en dev) |
 | `S3_SECRET_KEY` | Secret Access Key | sí | credencial R2 (o `minioadmin` en dev) |
 | `S3_BUCKET_NAME` | Bucket de objetos | sí | `gradox2-files` (debe existir en R2; en MinIO se crea en arranque) |
-| `SPRING_MAIL_HOST` | Host SMTP | sí | `smtp.gmail.com` |
-| `SPRING_MAIL_PORT` | Puerto SMTP | sí | `587` (STARTTLS) |
-| `SPRING_MAIL_USERNAME` | Cuenta SMTP | sí | `gradox2App@gmail.com` |
-| `SPRING_MAIL_PASSWORD` | App password SMTP | sí | contraseña de aplicación de Gmail |
+| `MAIL_TRANSPORT` | Transporte de correo: `brevo` o `smtp` | no | `brevo` en prod (default del perfil) |
+| `BREVO_API_KEY` | API key de Brevo (envío por HTTPS) | **sí** | Dashboard de Brevo → SMTP & API → API Keys |
+| `MAIL_FROM` | Remitente **verificado** en Brevo | **sí** | `gradox2App@gmail.com` |
+| `MAIL_FROM_NAME` | Nombre visible del remitente | no | `Gradox2` |
+| `SPRING_MAIL_HOST` | Host SMTP (solo si `MAIL_TRANSPORT=smtp`) | no | `smtp.gmail.com` en local |
+| `SPRING_MAIL_PORT` | Puerto SMTP (solo `smtp`) | no | `587` (STARTTLS) |
+| `SPRING_MAIL_USERNAME` | Cuenta SMTP (solo `smtp`) | no | — |
+| `SPRING_MAIL_PASSWORD` | App password SMTP (solo `smtp`) | no | — |
 | `SPRING_MAIL_SMTP_AUTH` | Autenticación SMTP | sí | `true` |
 | `SPRING_MAIL_SMTP_STARTTLS` | STARTTLS | sí | `true` |
 | `SPRING_PROFILES_ACTIVE` | Perfil activo | sí | **`prod`** |
@@ -228,7 +234,7 @@ docker build --network=host -t gradox2-app:latest -f Docker/Dockerfile .
 ### Build manual (sin Docker), para validar tests
 ```bash
 cd Gradox2/gradox2
-./mvnw test          # 231 tests (H2 + fake S3)
+./mvnw test          # 235 tests (H2 + fake S3)
 # Migraciones + mapeo JPA contra PostgreSQL real (lo corre el job `migrations` de CI):
 POSTGRES_TEST_URL=jdbc:postgresql://localhost:5432/gradoxdb ./mvnw test -Dtest=PostgresMigrationIT
 ./mvnw package -DskipTests
@@ -243,7 +249,7 @@ POSTGRES_TEST_URL=jdbc:postgresql://localhost:5432/gradoxdb ./mvnw test -Dtest=P
 - Puerto libre: **8080** (app).
 - ~1-2 GB RAM y ~1 CPU para el stack (límite del compose: app 1024m/768m).
 - Red de salida a **Supabase** (puerto 5432, requiere **IPv6 o IPv4 habilitado**
-  según el proyecto Supabase) y al **SMTP de Gmail** (587) y al **endpoint de R2**
+  según el proyecto Supabase), a **`api.brevo.com:443`** (correo en producción) y al **endpoint de R2**
   (HTTPS).
 
 ### Paso 1 — Crear los recursos externos
@@ -586,9 +592,10 @@ Base URL: `http://<host>:8080` (sin HTTPS por ahora). Lista detallada en
 - [ ] `SPRING_PROFILES_ACTIVE=prod`.
 - [ ] `APP_BASE_URL` apunta a la URL pública real.
 - [ ] `BOOTSTRAP_MASTER_USERNAME/PASSWORD/EMAIL` rellenos (si no, no habrá admin).
-- [ ] Credenciales SMTP de Gmail correctas y con permiso para enviar.
+- [ ] `BREVO_API_KEY` cargada en Render y `MAIL_FROM` **verificado** en Brevo (sin remitente verificado,
+      la API responde 400 y el correo no sale).
 - [ ] Build: `docker build --network=host -f Docker/Dockerfile .` OK.
-- [ ] Tests: `./mvnw test` → 231/231 OK (en el directorio `gradox2/`).
+- [ ] Tests: `./mvnw test` → 235/235 OK (en el directorio `gradox2/`).
 - [ ] Migraciones: `POSTGRES_TEST_URL=... ./mvnw test -Dtest=PostgresMigrationIT` → OK
       (aplica V1..V16 sobre PostgreSQL 16, valida el mapeo JPA y los índices; también corre en CI).
 - [ ] `docker compose --env-file Docker/.env -f Docker/docker-compose.yml config --quiet` no da errores.
@@ -615,7 +622,9 @@ Base URL: `http://<host>:8080` (sin HTTPS por ahora). Lista detallada en
 | Enlaces de verificación apuntan a `localhost` | `APP_BASE_URL` sin cambiar | fijar URL pública en `Docker/.env` |
 | No hay forma de crear el primer admin | `BOOTSTRAP_MASTER_*` vacíos | rellenar y reiniciar la app (es idempotente) |
 | Swagger/OpenAPI no responde en prod | desactivado a propósito | esperado; no re-activar en prod |
-| Contraseña de Gmail rechazada | SMTP necesita "contraseña de aplicación" | generar app password en la cuenta de Google |
+| El correo no llega en Render y el log dice `MailDeliveryException` | Render bloquea SMTP saliente (25/465/587) | usar `MAIL_TRANSPORT=brevo` con `BREVO_API_KEY` (HTTPS/443) |
+| Brevo responde 400 con "sender not valid" | El remitente no está verificado en Brevo | verificar `MAIL_FROM` en Brevo → Senders |
+| El correo llega pero el enlace de verificación no abre | `APP_BASE_URL` apunta al host equivocado | `APP_BASE_URL` debe ser la URL pública del backend, con `https://` |
 | App se detiene de golpe con OOM | `-XX:+ExitOnOutOfMemoryError` + límite pequeño | subir `mem_limit` del servicio `app` |
 
 ---

@@ -28,6 +28,8 @@ import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
 
 import com.example.gradox2.utils.EmailService;
+import com.example.gradox2.utils.mail.MailTransport;
+import com.example.gradox2.utils.mail.SmtpMailTransport;
 
 @ExtendWith(SpringExtension.class)
 @ContextConfiguration(classes = EmailServiceAsyncTest.Config.class)
@@ -52,9 +54,14 @@ class EmailServiceAsyncTest {
         }
 
         @Bean
-        EmailService emailService(JavaMailSender mailSender,
+        MailTransport mailTransport(JavaMailSender mailSender) {
+            return new SmtpMailTransport(mailSender);
+        }
+
+        @Bean
+        EmailService emailService(MailTransport mailTransport,
                 @org.springframework.beans.factory.annotation.Qualifier("taskExecutor") Executor taskExecutor) {
-            return new EmailService(mailSender, taskExecutor);
+            return new EmailService(mailTransport, taskExecutor);
         }
     }
 
@@ -99,7 +106,8 @@ class EmailServiceAsyncTest {
                 .when(flaky).send(any(SimpleMailMessage.class));
 
         // Executor síncrono: el reintento ocurre en el mismo hilo y el test es determinista.
-        new EmailService(flaky, Runnable::run).sendEmail("to@example.com", "Subject", "Body");
+        new EmailService(new SmtpMailTransport(flaky), Runnable::run)
+                .sendEmail("to@example.com", "Subject", "Body");
 
         verify(flaky, times(2)).send(any(SimpleMailMessage.class));
     }
@@ -112,7 +120,7 @@ class EmailServiceAsyncTest {
         };
 
         // WAVE2 S2: con AbortPolicy el pool rechaza; el alta de usuario no puede fallar por eso.
-        assertDoesNotThrow(() -> new EmailService(mailSenderMock, fullPool)
+        assertDoesNotThrow(() -> new EmailService(new SmtpMailTransport(mailSenderMock), fullPool)
                 .sendEmail("to@example.com", "Subject", "Body"));
         verify(mailSenderMock, times(0)).send(any(SimpleMailMessage.class));
     }

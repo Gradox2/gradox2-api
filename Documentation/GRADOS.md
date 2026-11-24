@@ -866,7 +866,7 @@ P5 y P6 no bloquean nada. A1 sí bloquea la tarea de bootstrap (T14), no el rest
 
 ## 14. As-built: qué se implementó y qué cambió respecto del plan
 
-Verificado con la suite completa en el perfil `test` (**231 tests**) y con `PostgresMigrationIT` contra
+Verificado con la suite completa en el perfil `test` (**235 tests**) y con `PostgresMigrationIT` contra
 PostgreSQL 16 real, que aplica V1→V16 sobre una base con datos previos y valida el mapeo JPA
 (`ddl-auto=validate`).
 
