@@ -44,7 +44,7 @@ con la cuenta creada pero deshabilitada, sin forma de verificarse salvo tocar la
   DEVOPS para verificar tras el deploy.
 - **E1** — `BrevoMailTransportTest` 4/4 (contrato de la API, `api-key`, remitente, rechazo 401 → fallo de
   entrega, y arranque sin API key), `EmailServiceAsyncTest` 4/4 y `MailFailureToleranceIntegrationTest` 2/2.
-- **E2** — Suite completa: **235 tests, 0 fallos** (`./mvnw test`, 2m09s).
+- **E2** — Suite completa: **236 tests, 0 fallos** (`./mvnw test`, 2m09s).
 - **E3** — Verificación independiente (`gentle-ai-verify`): S2 y S3 PASS, S1 PARTIAL y **S4 FAIL
   bloqueante**. Dos correcciones: (a) el perfil de producción ya no acepta `MAIL_TRANSPORT=smtp` — está
   fijado en `brevo`, porque en Render SMTP es un error de configuración, no una opción; (b) `MAIL_FROM`
