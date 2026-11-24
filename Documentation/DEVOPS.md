@@ -63,13 +63,13 @@ para la persistencia y el almacenamiento de archivos:
 | Seguridad | Spring Security + JWT | jjwt 0.11.5 | HS256, BCrypt para passwords |
 | **S3 / almacenamiento** | AWS SDK v2 (`s3`) | 2.50.2 | BOM `software.amazon.awssdk:bom:2.50.2` en `dependencyManagement` |
 | Documentación API | springdoc-openapi | 2.8.6 | **desactivada en prod** |
-| Monitorización | Spring Boot Actuator | incluida | `/actuator/health`, `/actuator/info` |
+| Monitorización | Spring Boot Actuator | incluida | `/actuator/health` (público, sin detalles), `/actuator/info`, `/actuator/metrics` (**solo ADMIN**) |
 | Email | spring-boot-starter-mail | incluida | SMTP Gmail (STARTTLS :587) |
 | Base de datos | PostgreSQL | 16+ | **Supabase gestionado** (SSL) |
 | Object storage | Cloudflare R2 / MinIO | — | endpoint S3 compatible, path-style |
 | Build | Maven (wrapper) | 3.x vía `./mvnw` | imagen base `eclipse-temurin:21` |
 | Contenedores | Docker + Docker Compose | Compose v2 | perfil `full` |
-| Test | JUnit 5 + MockMvc | Boot test | H2 en memoria, 213 tests (+ migraciones contra PostgreSQL real en CI) |
+| Test | JUnit 5 + MockMvc | Boot test | H2 en memoria, 231 tests (+ migraciones contra PostgreSQL real en CI) |
 
 ### Versiones clave del stack Docker
 - `eclipse-temurin:21-jdk` — stage de build del Dockerfile
@@ -172,6 +172,10 @@ Los entornos se seleccionan con `SPRING_PROFILES_ACTIVE`.
 | `RATE_LIMIT_MAX_BUCKETS` | Claves de rate limit simultáneas | no | `10000` |
 | `RATE_LIMIT_BUCKET_TTL_MS` | Vida de un bucket sin actividad (ms) | no | `1800000` |
 | `APP_BASE_URL` | URL pública para enlaces de email | **sí (pendiente)** | ver §6 |
+| `CACHE_TTL_SECONDS` | Vida de una entrada de la caché de catálogo | no | `600` |
+| `CACHE_MAX_SIZE` | Entradas máximas por caché de catálogo | no | `1000` |
+| `S3_API_CALL_TIMEOUT_MS` | Timeout total de una llamada a S3/R2 | no | `10000` |
+| `S3_API_CALL_ATTEMPT_TIMEOUT_MS` | Timeout por intento de una llamada a S3/R2 | no | `5000` |
 | `BOOTSTRAP_MASTER_USERNAME` | Primer MASTER (master del grado por defecto, solo primer arranque) | **sí (pendiente)** | ver §5 |
 | `BOOTSTRAP_MASTER_PASSWORD` | Password del primer MASTER | **sí (pendiente)** | ver §5 |
 | `BOOTSTRAP_MASTER_EMAIL` | Email del primer MASTER | **sí (pendiente)** | ver §5 |
@@ -224,7 +228,7 @@ docker build --network=host -t gradox2-app:latest -f Docker/Dockerfile .
 ### Build manual (sin Docker), para validar tests
 ```bash
 cd Gradox2/gradox2
-./mvnw test          # 213 tests (H2 + fake S3)
+./mvnw test          # 231 tests (H2 + fake S3)
 # Migraciones + mapeo JPA contra PostgreSQL real (lo corre el job `migrations` de CI):
 POSTGRES_TEST_URL=jdbc:postgresql://localhost:5432/gradoxdb ./mvnw test -Dtest=PostgresMigrationIT
 ./mvnw package -DskipTests
@@ -302,13 +306,27 @@ El identificador del rol vive en la columna `users.role`; el enum completo está
 `UserRole`. Detalle de la separación de roles: `GRADOS.md` §6.1 y §6.4.
 
 ### Paso 4 — Verificar el despliegue
+
+> **Caché de catálogo (WAVE2)**: grados, cursos y asignaturas se sirven desde Caffeine, con
+> `CACHE_MAX_SIZE` entradas y `CACHE_TTL_SECONDS` de vida. El catálogo solo cambia por migraciones, así
+> que tras una migración que lo modifique hay que reiniciar el servicio (no hay endpoint de invalidación).
+
 ```bash
 # Estado de los contenedores
 docker compose --env-file Docker/.env -f Docker/docker-compose.yml ps
 
 # Health de la app (comprueba app + PostgreSQL + disco)
+# Público: solo el estado agregado. Los detalles exigen autenticación (show-details=when-authorized).
 curl -s http://localhost:8080/actuator/health
-# → {"status":"UP","components":{"db":{...UP...},"diskSpace":{...}},...}
+# → {"status":"UP"}
+
+# Detalles de componentes, con token de ADMIN
+curl -s -H "Authorization: Bearer <token-admin>" http://localhost:8080/actuator/health
+
+# Métricas internas: SOLO con token de ADMIN (401 sin token, 403 con USER o MASTER)
+curl -s -H "Authorization: Bearer <token-admin>" http://localhost:8080/actuator/metrics
+curl -s -H "Authorization: Bearer <token-admin>" http://localhost:8080/actuator/metrics/http.server.requests
+```
 
 # Liveness / readiness
 curl -s http://localhost:8080/actuator/health/liveness
@@ -570,7 +588,7 @@ Base URL: `http://<host>:8080` (sin HTTPS por ahora). Lista detallada en
 - [ ] `BOOTSTRAP_MASTER_USERNAME/PASSWORD/EMAIL` rellenos (si no, no habrá admin).
 - [ ] Credenciales SMTP de Gmail correctas y con permiso para enviar.
 - [ ] Build: `docker build --network=host -f Docker/Dockerfile .` OK.
-- [ ] Tests: `./mvnw test` → 213/213 OK (en el directorio `gradox2/`).
+- [ ] Tests: `./mvnw test` → 231/231 OK (en el directorio `gradox2/`).
 - [ ] Migraciones: `POSTGRES_TEST_URL=... ./mvnw test -Dtest=PostgresMigrationIT` → OK
       (aplica V1..V16 sobre PostgreSQL 16, valida el mapeo JPA y los índices; también corre en CI).
 - [ ] `docker compose --env-file Docker/.env -f Docker/docker-compose.yml config --quiet` no da errores.
