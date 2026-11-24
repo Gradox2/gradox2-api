@@ -40,7 +40,23 @@ public class BrevoMailTransport implements MailTransport {
             @Value("${app.mail.from:}") String from,
             @Value("${app.mail.from-name:Gradox2}") String fromName,
             @Value("${app.mail.api-url:" + DEFAULT_API_URL + "}") String apiUrl) {
-        this(baseBuilder(apiUrl), apiKey, from, fromName);
+        this(validatedBuilder(apiKey, from, apiUrl), apiKey, from, fromName);
+    }
+
+    /**
+     * El builder llega con su base URL ya fijada por {@link #validatedBuilder}. No se vuelve a fijar
+     * acá: `app.mail.api-url` es parte del contrato, y un mock o un proxy configurado por entorno no
+     * puede terminar enviando —con la API key— al endpoint real de Brevo.
+     */
+    BrevoMailTransport(RestClient.Builder builder, String apiKey, String from, String fromName) {
+        this.from = from;
+        this.fromName = fromName;
+        this.client = builder
+                .defaultHeader("api-key", apiKey == null ? "" : apiKey)
+                .build();
+    }
+
+    private static RestClient.Builder validatedBuilder(String apiKey, String from, String apiUrl) {
         if (apiKey == null || apiKey.isBlank()) {
             throw new IllegalStateException(
                     "app.mail.transport=brevo requiere BREVO_API_KEY; sin ella el correo de verificación no sale.");
@@ -49,15 +65,7 @@ public class BrevoMailTransport implements MailTransport {
             throw new IllegalStateException(
                     "app.mail.transport=brevo requiere MAIL_FROM (remitente verificado en Brevo).");
         }
-    }
-
-    BrevoMailTransport(RestClient.Builder builder, String apiKey, String from, String fromName) {
-        this.from = from;
-        this.fromName = fromName;
-        this.client = builder
-                .baseUrl(DEFAULT_API_URL)
-                .defaultHeader("api-key", apiKey == null ? "" : apiKey)
-                .build();
+        return baseBuilder(apiUrl);
     }
 
     private static RestClient.Builder baseBuilder(String apiUrl) {

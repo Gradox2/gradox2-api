@@ -32,7 +32,7 @@ class BrevoMailTransportTest {
 
     @Test
     void sendsTheVerificationMailThroughTheBrevoApi() {
-        RestClient.Builder builder = RestClient.builder();
+        RestClient.Builder builder = RestClient.builder().baseUrl(BrevoMailTransport.DEFAULT_API_URL);
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
         BrevoMailTransport transport = new BrevoMailTransport(builder, API_KEY, FROM, "Gradox2");
 
@@ -53,7 +53,7 @@ class BrevoMailTransportTest {
 
     @Test
     void aProviderRejectionIsReportedAsDeliveryFailure() {
-        RestClient.Builder builder = RestClient.builder();
+        RestClient.Builder builder = RestClient.builder().baseUrl(BrevoMailTransport.DEFAULT_API_URL);
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
         BrevoMailTransport transport = new BrevoMailTransport(builder, API_KEY, FROM, "Gradox2");
 
@@ -62,6 +62,23 @@ class BrevoMailTransportTest {
 
         assertThatThrownBy(() -> transport.send("alumno@rai.usc.es", "Verifica tu cuenta", "cuerpo"))
                 .isInstanceOf(MailDeliveryException.class);
+        server.verify();
+    }
+
+    @Test
+    void honoursTheConfiguredApiUrlOverride() {
+        String proxy = "http://localhost:9099";
+        RestClient.Builder builder = RestClient.builder().baseUrl(proxy);
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        BrevoMailTransport transport = new BrevoMailTransport(builder, API_KEY, FROM, "Gradox2");
+
+        // R4-brevo-api-url-ignored: el override tiene que llegar al request, no ser pisado por el default.
+        server.expect(requestTo(proxy + "/v3/smtp/email"))
+                .andExpect(header("api-key", API_KEY))
+                .andRespond(withSuccess());
+
+        transport.send("alumno@rai.usc.es", "Verifica tu cuenta", "cuerpo");
+
         server.verify();
     }
 
