@@ -212,18 +212,57 @@ public class AuthServiceImpl implements IAuthService {
     }
 
     @Override
-    public boolean verifyToken(String token) {
-        return verificationTokenRepository.findByToken(token).map(vt -> {
-            if (vt.isExpired()) {
-                verificationTokenRepository.delete(vt);
-                return false;
+    @Transactional
+    public VerificationOutcome confirmVerification(String token) {
+        return verificationTokenRepository.findByToken(token)
+                .map(vt -> {
+                    if (vt.isExpired()) {
+                        verificationTokenRepository.delete(vt);
+                        return VerificationOutcome.INVALID;
+                    }
+                    User user = vt.getUser();
+                    if (user.isEnabled()) {
+                        // Idempotente: el token se conserva hasta expirar, así un doble clic no rompe nada.
+                        return VerificationOutcome.ALREADY_VERIFIED;
+                    }
+                    user.setEnabled(true);
+                    userRepository.save(user);
+                    return VerificationOutcome.VERIFIED;
+                })
+                .orElse(VerificationOutcome.INVALID);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public boolean isVerificationTokenUsable(String token) {
+        return verificationTokenRepository.findByToken(token)
+                .filter(vt -> !vt.isExpired())
+                .isPresent();
+    }
+
+    @Override
+    @Transactional
+    public void resendVerification(String email) {
+        userRepository.findByEmail(email).ifPresent(user -> {
+            if (user.isEnabled()) {
+                // Nada que hacer y nada que revelar: la respuesta es la misma exista o no la cuenta.
+                return;
             }
-            User user = vt.getUser();
-            user.setEnabled(true);
-            userRepository.save(user);
-            verificationTokenRepository.delete(vt);
-            return true;
-        }).orElse(false);
+            String newToken = java.util.UUID.randomUUID().toString();
+            // user_id es única en verification_token: el reenvío actualiza la fila existente.
+            VerificationToken verificationToken = verificationTokenRepository.findByUser(user)
+                    .map(existing -> {
+                        existing.setToken(newToken);
+                        existing.setExpiryDate(java.time.LocalDateTime.now().plusHours(24));
+                        return existing;
+                    })
+                    .orElseGet(() -> new VerificationToken(newToken, user));
+            verificationTokenRepository.save(verificationToken);
+
+            emailService.sendEmail(user.getEmail(), "Verifica tu cuenta",
+                    "Haz clic aquí para verificar tu cuenta: " + appBaseUrl
+                            + "/api/auth/verify?token=" + newToken);
+        });
     }
 
     private boolean isLocalOrDemo() {

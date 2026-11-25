@@ -192,12 +192,20 @@ class AuthRegistrationIntegrationTest {
         VerificationToken token = new VerificationToken("valid-token", user);
         verificationTokenRepository.save(token);
 
+        // Un GET (prefetch, escáner, tracking) abre la página pero no habilita nada.
         mockMvc.perform(get("/api/auth/verify").param("token", "valid-token"))
+                .andExpect(status().isOk());
+        org.junit.jupiter.api.Assertions.assertFalse(
+                userRepository.findByUsername("pending").orElseThrow().isEnabled(),
+                "el GET no puede verificar: solo la acción explícita verifica");
+
+        // La confirmación explícita sí habilita, y el token se conserva para que el doble clic funcione.
+        mockMvc.perform(post("/api/auth/verify/confirm").param("token", "valid-token"))
                 .andExpect(status().isOk());
 
         User refreshed = userRepository.findByUsername("pending").orElseThrow();
         org.junit.jupiter.api.Assertions.assertTrue(refreshed.isEnabled());
-        org.junit.jupiter.api.Assertions.assertTrue(verificationTokenRepository.findByToken("valid-token").isEmpty());
+        org.junit.jupiter.api.Assertions.assertTrue(verificationTokenRepository.findByToken("valid-token").isPresent());
     }
 
     @Test
@@ -215,11 +223,15 @@ class AuthRegistrationIntegrationTest {
         token.setExpiryDate(LocalDateTime.now().minusMinutes(1));
         verificationTokenRepository.save(token);
 
+        // La lectura solo informa: no borra ni habilita.
         mockMvc.perform(get("/api/auth/verify").param("token", "expired-token"))
                 .andExpect(status().isBadRequest());
+        org.junit.jupiter.api.Assertions.assertFalse(
+                userRepository.findByUsername("expireduser").orElseThrow().isEnabled());
 
-        User refreshed = userRepository.findByUsername("expireduser").orElseThrow();
-        org.junit.jupiter.api.Assertions.assertFalse(refreshed.isEnabled());
+        // El token vencido se descarta cuando alguien intenta confirmarlo.
+        mockMvc.perform(post("/api/auth/verify/confirm").param("token", "expired-token"))
+                .andExpect(status().isBadRequest());
         org.junit.jupiter.api.Assertions.assertTrue(verificationTokenRepository.findByToken("expired-token").isEmpty());
     }
 

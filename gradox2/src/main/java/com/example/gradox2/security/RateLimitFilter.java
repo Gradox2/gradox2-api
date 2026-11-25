@@ -66,6 +66,13 @@ public class RateLimitFilter extends OncePerRequestFilter {
             return;
         }
 
+        if ("POST".equals(method) && "/api/auth/verify/resend".equals(path)) {
+            // Sin esto el reenvío es un cañón de correo hacia terceros y quema la cuota del proveedor.
+            check("auth:verify-resend:" + clientIp(request), 3, 60 * 60 * 1000L,
+                    "Too many verification emails requested. Try again later.");
+            return;
+        }
+
         if (isVoteMutation(method, path)) {
             String principal = authenticatedUsername();
             if (principal == null) {
