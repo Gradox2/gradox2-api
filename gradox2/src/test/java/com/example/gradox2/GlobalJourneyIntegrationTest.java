@@ -117,8 +117,10 @@ class GlobalJourneyIntegrationTest {
 
         VerificationToken vt = verificationTokenRepository.findAll().stream().findFirst().orElseThrow();
 
-        // 2. Verificación del correo (mismo flow de la batería).
+        // 2. Verificación del correo: el enlace abre la página y la persona confirma con un POST.
         mockMvc.perform(get("/api/auth/verify").param("token", vt.getToken()))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/auth/verify/confirm").param("token", vt.getToken()))
                 .andExpect(status().isOk());
 
         // 3. Login del usuario recién verificado.

@@ -1,5 +1,6 @@
 package com.example.gradox2.presentation.controller;
 
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -97,20 +98,87 @@ public class AuthController {
         return ResponseEntity.ok("Contraseña actualizada correctamente");
     }
 
+    private static final java.util.regex.Pattern TOKEN_PATTERN =
+            java.util.regex.Pattern.compile("^[A-Za-z0-9-]{1,64}$");
+
+    private static final String RESEND_MESSAGE =
+            "Si la cuenta existe y está pendiente de verificación, te enviamos un correo nuevo.";
+
     @GetMapping("/verify")
-    @Operation(summary = "Verificar cuenta", description = "Activa la cuenta mediante el token de verificación enviado por email")
+    @Operation(summary = "Confirmar la cuenta (paso 1)",
+            description = "No habilita la cuenta: devuelve una página con un botón que confirma mediante POST. "
+                    + "Así un escáner de correo o un prefetch del proveedor no verifica a nadie.")
     @ApiResponses({
-        @ApiResponse(responseCode = "200", description = "Cuenta verificada"),
+        @ApiResponse(responseCode = "200", description = "Página de confirmación"),
         @ApiResponse(responseCode = "400", description = "Token inválido o expirado", content = @Content)
     })
-    public ResponseEntity<String> verifyAccount(
+    public ResponseEntity<String> verifyPage(
             @Parameter(description = "Token de verificación") @RequestParam("token") @NotBlank String token) {
-        boolean verified = authService.verifyToken(token);
-        if (verified) {
-            return ResponseEntity.ok("Cuenta verificada con éxito");
-        } else {
-            return ResponseEntity.badRequest().body("Token inválido o expirado");
+        if (!TOKEN_PATTERN.matcher(token).matches() || !authService.isVerificationTokenUsable(token)) {
+            return ResponseEntity.badRequest()
+                    .contentType(MediaType.TEXT_HTML)
+                    .header("Cache-Control", "no-store")
+                    .body(page("No pudimos verificar tu cuenta",
+                            "<p>El enlace no es válido o ya venció (duran 24 horas).</p>"
+                                    + "<p>Pedí uno nuevo con la opción «reenviar verificación».</p>",
+                            null, null));
         }
+        return ResponseEntity.ok()
+                .contentType(MediaType.TEXT_HTML)
+                .header("Cache-Control", "no-store")
+                .body(page("Verificá tu cuenta",
+                        "<p>Confirmá que querés activar tu cuenta.</p>",
+                        "/api/auth/verify/confirm", token));
+    }
+
+    @PostMapping("/verify/confirm")
+    @Operation(summary = "Confirmar la cuenta (paso 2)",
+            description = "Habilita la cuenta. Es idempotente: repetirlo responde que ya estaba verificada.")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "Cuenta verificada o ya verificada"),
+        @ApiResponse(responseCode = "400", description = "Token inválido o expirado", content = @Content)
+    })
+    public ResponseEntity<String> confirmAccount(
+            @Parameter(description = "Token de verificación") @RequestParam("token") @NotBlank String token) {
+        return switch (authService.confirmVerification(token)) {
+            case VERIFIED -> ResponseEntity.ok("Cuenta verificada con éxito");
+            case ALREADY_VERIFIED -> ResponseEntity.ok("La cuenta ya estaba verificada");
+            case INVALID -> ResponseEntity.badRequest().body("Token inválido o expirado");
+        };
+    }
+
+    @PostMapping("/verify/resend")
+    @Operation(summary = "Reenviar el correo de verificación",
+            description = "Responde siempre lo mismo para no revelar si la cuenta existe. Limitado a 3 por hora por IP.")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "Respuesta genérica"),
+        @ApiResponse(responseCode = "429", description = "Demasiados reenvíos", content = @Content)
+    })
+    public ResponseEntity<String> resendVerification(
+            @RequestBody(required = false) java.util.Map<String, String> body) {
+        String email = body == null ? null : body.get("email");
+        if (email != null && !email.isBlank()) {
+            authService.resendVerification(email.trim());
+        }
+        return ResponseEntity.ok(RESEND_MESSAGE);
+    }
+
+    private String page(String title, String body, String action, String token) {
+        StringBuilder form = new StringBuilder();
+        if (action != null && token != null) {
+            form.append("<form method=\"post\" action=\"").append(action).append("\">")
+                    .append("<input type=\"hidden\" name=\"token\" value=\"").append(token).append("\">")
+                    .append("<button type=\"submit\">Verificar mi cuenta</button>")
+                    .append("</form>");
+        }
+        return "<!doctype html><html lang=\"es\"><head><meta charset=\"utf-8\">"
+                + "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
+                + "<meta name=\"robots\" content=\"noindex,nofollow\">"
+                + "<title>Gradox2</title></head>"
+                + "<body style=\"font-family:system-ui,sans-serif;max-width:32rem;margin:3rem auto;padding:0 1rem\">"
+                + "<h1 style=\"font-size:1.25rem\">" + title + "</h1>"
+                + body + form
+                + "</body></html>";
     }
 
 }

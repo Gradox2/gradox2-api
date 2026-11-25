@@ -14,5 +14,13 @@ public interface IAuthService {
     void logout(TokenRequest request);
     void requestPasswordReset(PasswordResetRequest request);
     void resetPassword(PasswordResetConfirmRequest request);
-    boolean verifyToken(String token);
+    /** Resultado de intentar confirmar una cuenta con un token de verificación. */
+    enum VerificationOutcome { VERIFIED, ALREADY_VERIFIED, INVALID }
+
+    VerificationOutcome confirmVerification(String token);
+
+    /** Solo lectura: dice si el token serviría, sin habilitar a nadie. */
+    boolean isVerificationTokenUsable(String token);
+
+    void resendVerification(String email);
 }
