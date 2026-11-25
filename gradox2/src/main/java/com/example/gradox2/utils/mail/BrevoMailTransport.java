@@ -6,6 +6,7 @@ import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
@@ -35,6 +36,7 @@ public class BrevoMailTransport implements MailTransport {
     private final String from;
     private final String fromName;
 
+    @Autowired
     public BrevoMailTransport(
             @Value("${app.mail.api-key:}") String apiKey,
             @Value("${app.mail.from:}") String from,
